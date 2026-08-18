@@ -82,7 +82,7 @@ class StoreViewModel @Inject constructor(
                     item.copy(skinUuid = levelToSkinMap[item.uuid] ?: item.uuid) 
                 }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Błąd ładowania sklepu Valorant"
+                _error.value = e.message ?: "Failed to load Valorant store"
             } finally {
                 _isLoading.value = false
             }

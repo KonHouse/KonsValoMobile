@@ -29,10 +29,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Ustawienia Konta") },
+                title = { Text("Account Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Wróć")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -55,7 +55,7 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Zalogowane Konto Riot Games",
+                        text = "Logged-in Riot Games Account",
                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                         color = MaterialTheme.colorScheme.primary
                     )
@@ -82,7 +82,7 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "Region: ${viewModel.getRegion()}",
+                            text = "Region: ${viewModel.getRegion().uppercase()}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -91,8 +91,8 @@ fun SettingsScreen(
             }
 
             ListItem(
-                headlineContent = { Text("Powiadomienia z Wishlisty") },
-                supportingContent = { Text("Powiadom mnie na telefonie, gdy upatrzony skin pojawi się w sklepie") },
+                headlineContent = { Text("Wishlist Notifications") },
+                supportingContent = { Text("Notify me when a wishlisted skin appears in my daily store") },
                 leadingContent = { Icon(Icons.Rounded.Notifications, contentDescription = null) },
                 trailingContent = {
                     Switch(
@@ -118,7 +118,7 @@ fun SettingsScreen(
             ) {
                 Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Wyloguj się z Riot Games", fontWeight = FontWeight.Bold)
+                Text("Log out of Riot Games", fontWeight = FontWeight.Bold)
             }
         }
     }

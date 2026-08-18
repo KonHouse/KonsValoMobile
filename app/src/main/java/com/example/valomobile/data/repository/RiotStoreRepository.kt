@@ -38,11 +38,11 @@ class RiotStoreRepository @Inject constructor(
 
     private suspend fun fetchStorefrontRaw(): RiotStorefrontRawResponse = withContext(Dispatchers.IO) {
         val accessToken = authRepository.getAccessToken()
-            ?: throw IOException("Brak aktywnej sesji logowania Riot.")
+            ?: throw IOException("No active Riot login session.")
         val entitlementsToken = authRepository.getEntitlementsToken()
-            ?: throw IOException("Brak tokena entitlements.")
+            ?: throw IOException("Missing entitlements token.")
         val puuid = authRepository.getPuuid()
-            ?: throw IOException("Brak identyfikatora gracza PUUID.")
+            ?: throw IOException("Missing player PUUID.")
         val region = authRepository.getRegion()
         val clientVersion = authRepository.getClientVersion()
 
@@ -58,7 +58,7 @@ class RiotStoreRepository @Inject constructor(
             )
         } catch (e: Exception) {
             Log.e(TAG, "Storefront API error", e)
-            throw IOException("Błąd pobierania sklepu z Riot Games: ${e.message}", e)
+            throw IOException("Failed to load store from Riot Games: ${e.message}", e)
         }
     }
 

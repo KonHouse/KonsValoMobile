@@ -92,7 +92,7 @@ class RiotAuthRepository @Inject constructor(
             if (body?.type == "multifactor") {
                 val email = body.multifactor?.email
                 return@withContext RiotAuthResult.TwoFaRequired(
-                    message = "Wpisz 6-cyfrowy kod bezpieczeństwa wysłany na Twój adres e-mail.",
+                    message = "Please enter the 6-digit security code sent to your email address.",
                     email = email
                 )
             }
@@ -100,9 +100,9 @@ class RiotAuthRepository @Inject constructor(
             // Check if login failed
             if (body?.error != null) {
                 val msg = when (body.error) {
-                    "auth_failure" -> "Niepoprawna nazwa konta Riot lub hasło."
-                    "rate_limited" -> "Zbyt wiele prób logowania. Odczekaj chwilę i spróbuj ponownie."
-                    else -> "Błąd logowania Riot: ${body.error}"
+                    "auth_failure" -> "Invalid Riot account username or password."
+                    "rate_limited" -> "Too many login attempts. Please wait a moment and try again."
+                    else -> "Riot login error: ${body.error}"
                 }
                 return@withContext RiotAuthResult.Error(msg)
             }
@@ -116,10 +116,10 @@ class RiotAuthRepository @Inject constructor(
                 return@withContext finalizeFromUri(targetUri)
             }
 
-            RiotAuthResult.Error("Nie otrzymano tokena autoryzacji z serwerów Riot.")
+            RiotAuthResult.Error("No authorization token received from Riot servers.")
         } catch (e: Exception) {
             Log.e(TAG, "Error in login", e)
-            RiotAuthResult.Error("Błąd połączenia z Riot Games: ${e.message ?: "Nieznany błąd"}")
+            RiotAuthResult.Error("Connection error with Riot Games: ${e.message ?: "Unknown error"}")
         }
     }
 
@@ -137,7 +137,7 @@ class RiotAuthRepository @Inject constructor(
             val locationHeader = res.headers()["Location"]
 
             if (body?.error != null) {
-                return@withContext RiotAuthResult.Error("Niepoprawny kod 2FA. Spróbuj ponownie.")
+                return@withContext RiotAuthResult.Error("Invalid 2FA code. Please try again.")
             }
 
             val targetUri = locationHeader 
@@ -148,10 +148,10 @@ class RiotAuthRepository @Inject constructor(
                 return@withContext finalizeFromUri(targetUri)
             }
 
-            RiotAuthResult.Error("Nie udało się zweryfikować kodu 2FA.")
+            RiotAuthResult.Error("Failed to verify 2FA code.")
         } catch (e: Exception) {
             Log.e(TAG, "Error in submit2Fa", e)
-            RiotAuthResult.Error("Błąd weryfikacji 2FA: ${e.message}")
+            RiotAuthResult.Error("2FA verification error: ${e.message}")
         }
     }
 
@@ -159,7 +159,7 @@ class RiotAuthRepository @Inject constructor(
         try {
             finalizeFromUri(redirectUrl.trim())
         } catch (e: Exception) {
-            RiotAuthResult.Error("Błąd przetwarzania adresu logowania: ${e.message}")
+            RiotAuthResult.Error("Error processing login URL: ${e.message}")
         }
     }
 
@@ -180,7 +180,7 @@ class RiotAuthRepository @Inject constructor(
 
         if (accessToken.isNullOrBlank()) {
             Log.e(TAG, "Failed to extract access_token from: $uriString")
-            return RiotAuthResult.Error("Nie znaleziono access_token w podanym linku. Upewnij się, że skopiowałeś pełny link z paska adresu.")
+            return RiotAuthResult.Error("No access_token found in the provided link. Ensure you copied the full address bar URL.")
         }
 
         return finalizeTokens(accessToken, idToken ?: accessToken)
@@ -191,7 +191,7 @@ class RiotAuthRepository @Inject constructor(
             finalizeTokens(accessToken.trim(), idToken.trim())
         } catch (e: Exception) {
             Log.e(TAG, "Error in loginWithTokens", e)
-            RiotAuthResult.Error("Błąd logowania tokenami: ${e.message}")
+            RiotAuthResult.Error("Token authentication error: ${e.message}")
         }
     }
 

@@ -63,7 +63,7 @@ class RiotLoginActivity : ComponentActivity() {
         }
 
         val titleText = TextView(this).apply {
-            text = "Oficjalne Logowanie Riot Games"
+            text = "Official Riot Games Login"
             setTextColor(Color.WHITE)
             textSize = 16f
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -213,7 +213,7 @@ class RiotLoginActivity : ComponentActivity() {
         }
 
         val confirmButton = Button(this).apply {
-            text = "✅ ZALOGOWAŁEM SIĘ - OTWÓRZ SKLEP"
+            text = "OPEN STORE"
             setTextColor(Color.WHITE)
             setBackgroundColor(0xFFFF4655.toInt())
             typeface = android.graphics.Typeface.DEFAULT_BOLD
@@ -231,7 +231,7 @@ class RiotLoginActivity : ComponentActivity() {
                             runOnUiThread {
                                 Toast.makeText(
                                     this@RiotLoginActivity,
-                                    "Wpisz login i hasło w formularzu powyżej i kliknij strzałkę logowania (->).",
+                                    "Please enter your username and password above and tap the login arrow (->).",
                                     Toast.LENGTH_LONG
                                 ).show()
                             }

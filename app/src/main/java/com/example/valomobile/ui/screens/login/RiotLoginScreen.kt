@@ -91,7 +91,7 @@ fun RiotLoginScreen(
                 )
 
                 Text(
-                    text = "Oficjalny podgląd Twojego sklepu Valorant",
+                    text = "Official preview of your Valorant store",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
@@ -119,14 +119,14 @@ fun RiotLoginScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "Oficjalne Logowanie Riot Games",
+                                text = "Official Riot Games Login",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
 
                         Text(
-                            text = "Logowanie w bezpiecznym oknie Chrome z pełnym wsparciem 2FA, menedżera haseł i automatycznego przekierowania.",
+                            text = "Secure Chrome login with full support for 2FA, password manager, and automatic redirection.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -161,7 +161,7 @@ fun RiotLoginScreen(
                             Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null)
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                "ZALOGUJ PRZEZ RIOT GAMES",
+                                "LOG IN WITH RIOT GAMES",
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 0.5.sp
                             )
@@ -196,7 +196,7 @@ fun RiotLoginScreen(
                             Icon(Icons.Rounded.FlashOn, contentDescription = null, tint = Color(0xFFFFD700), modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                "Włącz autoredirect z Chrome (1-klik)",
+                                "Enable Chrome autoredirect (1-click)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -233,7 +233,7 @@ fun RiotLoginScreen(
                             Icon(Icons.Rounded.ManageAccounts, contentDescription = null, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "Strona Konta Riot Games (Wyloguj / Zmień konto)",
+                                "Riot Games Account (Log out / Switch)",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -282,7 +282,7 @@ fun RiotLoginScreen(
                     enter = fadeIn(),
                     exit = fadeOut()
                 ) {
-                    val loadingMsg = (uiState as? LoginState.Loading)?.message ?: "Logowanie..."
+                    val loadingMsg = (uiState as? LoginState.Loading)?.message ?: "Logging in..."
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
