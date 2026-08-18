@@ -1,0 +1,4 @@
+<resources>
+
+    <style name="Theme.ValoMobile" parent="Theme.MaterialComponents.Light" />
+</resources>

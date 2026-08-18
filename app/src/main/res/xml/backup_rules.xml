@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <include domain="sharedpref" path="."/>
+    <!-- Exclude sensitive auth token SharedPreferences from cloud backup -->
+    <exclude domain="sharedpref" path="riot_direct_auth_prefs.xml"/>
+</full-backup-content>
