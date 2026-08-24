@@ -14,33 +14,34 @@ import javax.inject.Singleton
 
 @Singleton
 class RiotStoreRepository @Inject constructor(
-    private val storeApiService: RiotStoreApiService,
     private val authRepository: RiotAuthRepository,
+    private val storeApiService: RiotStoreApiService,
     private val valorantApiService: ValorantApiService,
     private val catalogRepository: SkinCatalogRepository
 ) {
-    private val currencyVpId = "85ad3983-4cc1-4528-ab8b-577392ee0fa0"
-    private val currencyAltId = "85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741"
+    companion object {
+        private const val TAG = "RiotStoreRepo"
+    }
 
     private var cachedBundlesMeta: Map<String, ValorantBundleItem> = emptyMap()
+    private var isMetadataLoaded = false
 
-    private suspend fun ensureMetadata() {
-        catalogRepository.getAllSkins()
-        if (cachedBundlesMeta.isEmpty()) {
+    private suspend fun ensureMetadata() = withContext(Dispatchers.IO) {
+        if (!isMetadataLoaded) {
             try {
-                val bundlesRes = valorantApiService.getBundles(language = "en-US")
-                cachedBundlesMeta = bundlesRes.data.associateBy { it.uuid.lowercase() }
+                catalogRepository.ensureAllCatalogMetadataLoaded()
+                val bundlesResponse = valorantApiService.getBundles(language = "en-US")
+                cachedBundlesMeta = bundlesResponse.data.associateBy { it.uuid.lowercase() }
+                isMetadataLoaded = true
             } catch (e: Exception) {
-                Log.w(TAG, "Failed to load bundles metadata", e)
+                Log.w(TAG, "Failed to load metadata from valorant-api.com", e)
             }
         }
     }
 
     private suspend fun fetchStorefrontRaw(): RiotStorefrontRawResponse = withContext(Dispatchers.IO) {
-        val accessToken = authRepository.getAccessToken()
-            ?: throw IOException("No active Riot login session.")
-        val entitlementsToken = authRepository.getEntitlementsToken()
-            ?: throw IOException("Missing entitlements token.")
+        var accessToken = authRepository.getAccessToken()
+        var entitlementsToken = authRepository.getEntitlementsToken()
         val puuid = authRepository.getPuuid()
             ?: throw IOException("Missing player PUUID.")
         val region = authRepository.getRegion()
@@ -48,8 +49,20 @@ class RiotStoreRepository @Inject constructor(
 
         val storefrontUrl = "https://pd.$region.a.pvp.net/store/v3/storefront/$puuid"
 
+        if (accessToken.isNullOrBlank() || entitlementsToken.isNullOrBlank()) {
+            val refreshed = authRepository.refreshSessionSilently()
+            if (refreshed) {
+                accessToken = authRepository.getAccessToken()
+                entitlementsToken = authRepository.getEntitlementsToken()
+            }
+        }
+
+        if (accessToken.isNullOrBlank() || entitlementsToken.isNullOrBlank()) {
+            throw IOException("No active Riot login session.")
+        }
+
         try {
-            storeApiService.getStorefront(
+            return@withContext storeApiService.getStorefront(
                 url = storefrontUrl,
                 authHeader = "Bearer $accessToken",
                 entitlementsToken = entitlementsToken,
@@ -57,6 +70,36 @@ class RiotStoreRepository @Inject constructor(
                 clientPlatform = RiotAuthRepository.CLIENT_PLATFORM
             )
         } catch (e: Exception) {
+            val isAuthError = e.message?.contains("400") == true 
+                || e.message?.contains("401") == true 
+                || e.message?.contains("BAD_CLAIMS") == true 
+                || e.message?.contains("Unauthorized") == true
+
+            if (isAuthError) {
+                Log.w(TAG, "Storefront request failed with auth error, attempting silent refresh...", e)
+                val refreshed = authRepository.refreshSessionSilently()
+                if (refreshed) {
+                    val newAccessToken = authRepository.getAccessToken()
+                    val newEntitlementsToken = authRepository.getEntitlementsToken()
+                    if (!newAccessToken.isNullOrBlank() && !newEntitlementsToken.isNullOrBlank()) {
+                        try {
+                            return@withContext storeApiService.getStorefront(
+                                url = storefrontUrl,
+                                authHeader = "Bearer $newAccessToken",
+                                entitlementsToken = newEntitlementsToken,
+                                clientVersion = authRepository.getClientVersion(),
+                                clientPlatform = RiotAuthRepository.CLIENT_PLATFORM
+                            )
+                        } catch (retryEx: Exception) {
+                            Log.e(TAG, "Storefront retry after refresh failed", retryEx)
+                        }
+                    }
+                }
+                Log.w(TAG, "Session expired and could not be refreshed. Logging out.")
+                authRepository.logout()
+                throw IOException("Riot session expired. Please log in again.", e)
+            }
+
             Log.e(TAG, "Storefront API error", e)
             throw IOException("Failed to load store from Riot Games: ${e.message}", e)
         }
@@ -74,14 +117,10 @@ class RiotStoreRepository @Inject constructor(
             offerCostMap[offer.offerId.lowercase()] = cost
         }
 
-        val allCatalogSkins = catalogRepository.getAllSkins().associateBy { it.uuid.lowercase() }
-        val levelToSkinMap = catalogRepository.getLevelToSkinMap()
-
         val result = mutableListOf<SkinItem>()
         for (skinUuid in singleOffers) {
             val key = skinUuid.lowercase()
-            val baseSkinUuid = levelToSkinMap[key] ?: key
-            val meta = allCatalogSkins[baseSkinUuid]
+            val meta = catalogRepository.getItemMeta(key)
 
             val price = offerCostMap[key] ?: meta?.price ?: 1775
             val displayName = meta?.displayName ?: "Valorant Skin"
@@ -92,11 +131,11 @@ class RiotStoreRepository @Inject constructor(
                     uuid = skinUuid,
                     displayName = displayName,
                     displayIcon = displayIcon,
-                    weaponType = meta?.weaponType ?: "Weapon",
+                    weaponType = meta?.itemType ?: "Weapon",
                     price = price,
                     discount = 0,
                     tier = meta?.tier ?: "Select",
-                    skinUuid = baseSkinUuid
+                    skinUuid = meta?.uuid ?: skinUuid
                 )
             )
         }
@@ -111,47 +150,79 @@ class RiotStoreRepository @Inject constructor(
             bundleWrapper.bundle?.let { listOf(it) } ?: emptyList()
         }
 
-        val allCatalogSkins = catalogRepository.getAllSkins().associateBy { it.uuid.lowercase() }
-        val levelToSkinMap = catalogRepository.getLevelToSkinMap()
-
         val result = mutableListOf<Bundle>()
         for (b in rawBundles) {
             val bundleUuid = b.dataAssetId ?: b.id ?: ""
             val bundleMeta = cachedBundlesMeta[bundleUuid.lowercase()]
+            val bundleTitle = bundleMeta?.displayName
+                ?.replace(" Bundle", "", ignoreCase = true)
+                ?.replace(" Collection", "", ignoreCase = true)
+                ?: "Exclusive"
 
             val items = mutableListOf<SkinItem>()
             val rawItems = b.itemOffers.ifEmpty { b.items }
 
             for (item in rawItems) {
-                val itemUuid = item.offer?.rewards?.firstOrNull()?.itemId
-                    ?: item.item?.itemId
+                val reward = item.offer?.rewards?.firstOrNull() ?: item.item
+                val itemTypeId = reward?.itemTypeId?.lowercase() ?: ""
+                val itemUuid = reward?.itemId
                     ?: item.bundleItemOfferId
                     ?: item.itemId
                     ?: item.offer?.offerId
                     ?: ""
 
-                val key = itemUuid.lowercase()
-                val baseSkinUuid = levelToSkinMap[key] ?: key
-                val skinMeta = allCatalogSkins[baseSkinUuid]
+                val meta = catalogRepository.getItemMeta(itemUuid)
 
-                val basePrice = extractCost(item.offer?.cost, item.basePrice ?: 1775)
-                val discountedCost = item.discountedCost?.let { extractCost(it, basePrice) } ?: item.discountedPrice ?: basePrice
-                val discount = if (item.discountPercent > 0) {
-                    (item.discountPercent * 100).toInt()
-                } else if (basePrice > 0) {
-                    ((basePrice - discountedCost) * 100 / basePrice)
-                } else 0
+                val itemType = meta?.itemType ?: when {
+                    itemTypeId.contains("3f296c07") -> "Player Card"
+                    itemTypeId.contains("dd3bf334") -> "Gun Buddy"
+                    itemTypeId.contains("dbe185c1") -> "Spray"
+                    itemTypeId.contains("de7bf618") -> "Player Title"
+                    itemTypeId.contains("b0254c7c") -> "Flex"
+                    item.basePrice == 1350 || item.basePrice == 1000 -> "Flex"
+                    item.basePrice == 375 -> "Player Card"
+                    item.basePrice == 475 -> "Gun Buddy"
+                    item.basePrice == 325 -> "Spray"
+                    item.basePrice != null && item.basePrice!! > 1500 -> "Weapon Skin"
+                    else -> "Flex"
+                }
+
+                val displayName = meta?.displayName ?: when (itemType) {
+                    "Flex" -> "$bundleTitle Flex"
+                    "Player Card" -> "$bundleTitle Card"
+                    "Gun Buddy" -> "$bundleTitle Buddy"
+                    "Spray" -> "$bundleTitle Spray"
+                    "Player Title" -> "$bundleTitle Title"
+                    else -> "$bundleTitle Item"
+                }
+
+                val displayIcon = meta?.displayIcon?.ifBlank { null }
+                    ?: bundleMeta?.displayIcon
+                    ?: bundleMeta?.verticalPromoImage
+                    ?: ""
+
+                val defaultBasePrice = meta?.price ?: when (itemType) {
+                    "Player Card" -> 375
+                    "Gun Buddy" -> 475
+                    "Spray" -> 325
+                    "Player Title" -> 200
+                    "Flex" -> 1350
+                    else -> 1775
+                }
+
+                val rawBasePrice = extractCost(item.offer?.cost, item.basePrice ?: defaultBasePrice)
+                val basePrice = if (rawBasePrice > 0) rawBasePrice else defaultBasePrice
 
                 items.add(
                     SkinItem(
                         uuid = itemUuid,
-                        displayName = skinMeta?.displayName ?: "Bundle Item",
-                        displayIcon = skinMeta?.displayIcon ?: "",
-                        weaponType = skinMeta?.weaponType ?: "Weapon",
+                        displayName = displayName,
+                        displayIcon = displayIcon,
+                        weaponType = itemType,
                         price = basePrice,
-                        discount = discount,
-                        tier = skinMeta?.tier ?: "Select",
-                        skinUuid = baseSkinUuid
+                        discount = 0,
+                        tier = meta?.tier ?: "Select",
+                        skinUuid = meta?.uuid ?: itemUuid
                     )
                 )
             }
@@ -183,48 +254,42 @@ class RiotStoreRepository @Inject constructor(
         val raw = fetchStorefrontRaw()
         val bonusStore = raw.bonusStore ?: return@withContext emptyList()
         val offers = bonusStore.bonusStoreOffers
-        if (offers.isEmpty()) return@withContext emptyList()
-
-        val allCatalogSkins = catalogRepository.getAllSkins().associateBy { it.uuid.lowercase() }
-        val levelToSkinMap = catalogRepository.getLevelToSkinMap()
 
         val result = mutableListOf<SkinItem>()
         for (offer in offers) {
-            val skinUuid = offer.offer?.rewards?.firstOrNull()?.itemId 
-                ?: offer.offer?.offerId 
-                ?: offer.bonusOfferId 
-                ?: ""
+            val rewards = offer.offer?.rewards ?: emptyList()
+            val itemUuid = rewards.firstOrNull()?.itemId ?: offer.bonusOfferId ?: ""
+            val key = itemUuid.lowercase()
+            val meta = catalogRepository.getItemMeta(key)
 
-            val key = skinUuid.lowercase()
-            val baseSkinUuid = levelToSkinMap[key] ?: key
-            val meta = allCatalogSkins[baseSkinUuid]
-
-            val originalPrice = extractCost(offer.offer?.cost, 1775)
-            val discountPercent = offer.discountPercent
-            val discountedPrice = extractCost(offer.discountCosts, originalPrice - (originalPrice * discountPercent / 100))
+            val basePrice = extractCost(offer.offer?.cost, 1775)
+            val discountCost = extractCost(offer.discountCosts, basePrice)
+            val discount = offer.discountPercent
 
             result.add(
                 SkinItem(
-                    uuid = skinUuid,
+                    uuid = itemUuid,
                     displayName = meta?.displayName ?: "Night Market Skin",
                     displayIcon = meta?.displayIcon ?: "",
-                    weaponType = meta?.weaponType ?: "Weapon",
-                    price = originalPrice,
-                    discount = discountPercent,
+                    weaponType = meta?.itemType ?: "Weapon",
+                    price = basePrice,
+                    discount = discount,
                     tier = meta?.tier ?: "Select",
-                    skinUuid = baseSkinUuid
+                    skinUuid = meta?.uuid ?: itemUuid
                 )
             )
         }
         result
     }
 
-    private fun extractCost(costMap: Map<String, Int>?, fallback: Int): Int {
-        if (costMap == null || costMap.isEmpty()) return fallback
-        return costMap[currencyVpId] ?: costMap[currencyAltId] ?: costMap.values.firstOrNull() ?: fallback
-    }
-
-    companion object {
-        private const val TAG = "RiotStoreRepository"
+    private fun extractCost(costObj: Any?, fallback: Int): Int {
+        if (costObj == null) return fallback
+        if (costObj is Number) return costObj.toInt()
+        if (costObj is Map<*, *>) {
+            for (value in costObj.values) {
+                if (value is Number) return value.toInt()
+            }
+        }
+        return fallback
     }
 }

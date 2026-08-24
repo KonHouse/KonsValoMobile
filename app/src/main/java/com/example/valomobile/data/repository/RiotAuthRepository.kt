@@ -257,11 +257,77 @@ class RiotAuthRepository @Inject constructor(
                 cookieStore[key] = value
             }
         }
+        val serialized = getCookieHeader()
+        if (serialized != null) {
+            sharedPreferences.edit().putString(KEY_COOKIES, serialized).apply()
+        }
     }
 
     private fun getCookieHeader(): String? {
-        if (cookieStore.isEmpty()) return null
-        return cookieStore.entries.joinToString("; ") { "${it.key}=${it.value}" }
+        if (cookieStore.isNotEmpty()) {
+            return cookieStore.entries.joinToString("; ") { "${it.key}=${it.value}" }
+        }
+        val saved = sharedPreferences.getString(KEY_COOKIES, null)
+        if (!saved.isNullOrBlank()) {
+            return saved
+        }
+        try {
+            val webViewCookies = android.webkit.CookieManager.getInstance().getCookie("https://auth.riotgames.com")
+            if (!webViewCookies.isNullOrBlank()) {
+                return webViewCookies
+            }
+        } catch (e: Exception) {
+            // ignore
+        }
+        return null
+    }
+
+    suspend fun refreshSessionSilently(): Boolean = withContext(Dispatchers.IO) {
+        val cookies = getCookieHeader()
+        if (cookies.isNullOrBlank()) {
+            Log.d(TAG, "Cannot refresh session: no cookies found")
+            return@withContext false
+        }
+
+        try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .followRedirects(false)
+                .followSslRedirects(false)
+                .build()
+
+            val request = okhttp3.Request.Builder()
+                .url(RIOT_AUTH_URL)
+                .header("Cookie", cookies)
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36")
+                .build()
+
+            val response = client.newCall(request).execute()
+            storeCookies(response.headers("Set-Cookie"))
+
+            val location = response.header("Location") ?: ""
+            if (location.contains("access_token=")) {
+                val tokenRegex = Regex("""access_token=([A-Za-z0-9\-_=.]+)""")
+                val accessTokenMatch = tokenRegex.find(location)
+                val accessToken = accessTokenMatch?.groupValues?.get(1)
+
+                val idTokenRegex = Regex("""id_token=([A-Za-z0-9\-_=.]+)""")
+                val idTokenMatch = idTokenRegex.find(location)
+                val idToken = idTokenMatch?.groupValues?.get(1) ?: accessToken
+
+                if (!accessToken.isNullOrBlank()) {
+                    val result = finalizeTokens(accessToken, idToken ?: accessToken)
+                    if (result is RiotAuthResult.Success) {
+                        Log.d(TAG, "Silent session refresh succeeded!")
+                        return@withContext true
+                    }
+                }
+            }
+            Log.w(TAG, "Silent session refresh failed: location did not contain token ($location)")
+            false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in silent session refresh", e)
+            false
+        }
     }
 
     val isLoggedIn: Boolean
@@ -279,6 +345,12 @@ class RiotAuthRepository @Inject constructor(
 
     fun logout() {
         cookieStore.clear()
+        try {
+            android.webkit.CookieManager.getInstance().removeAllCookies(null)
+            android.webkit.CookieManager.getInstance().flush()
+        } catch (e: Exception) {
+            // ignore
+        }
         sharedPreferences.edit().clear().apply()
         _sessionState.value = false
     }
@@ -296,6 +368,10 @@ class RiotAuthRepository @Inject constructor(
         private const val KEY_GAME_NAME = "game_name"
         private const val KEY_TAG_LINE = "tag_line"
         private const val KEY_CLIENT_VERSION = "client_version"
+        private const val KEY_COOKIES = "session_cookies"
+
+        private const val RIOT_AUTH_URL =
+            "https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&response_type=token%20id_token&redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&scope=account%20openid&nonce=1"
 
         const val USER_AGENT = "RiotClient/63.0.9.4909983.4789131 rso-auth (Windows;10;;Professional, x64)"
         const val CLIENT_PLATFORM = "ew0KCSJwbGF0Zm9ybVR5cGUiOiAiUEMiLA0KCSJwbGF0Zm9ybU9TIjogIldpbmRvd3MiLA0KCSJwbGF0Zm9ybU9TVmVyc2lvbiI6ICIxMC4wLjE5MDQyLjEuMjU2LjY0Yml0IiwNCgkicGxhdGZvcm1DaGlwc2V0IjogIlVua25vd24iDQp9"

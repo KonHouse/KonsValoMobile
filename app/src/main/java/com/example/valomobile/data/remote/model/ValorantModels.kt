@@ -49,3 +49,34 @@ data class ValorantBundleItem(
     val description: String?,
     val verticalPromoImage: String?
 )
+
+data class ValorantPlayerCard(
+    val uuid: String,
+    val displayName: String,
+    val displayIcon: String?,
+    val smallArt: String?,
+    val wideArt: String?,
+    val largeArt: String?
+)
+
+data class ValorantBuddy(
+    val uuid: String,
+    val displayName: String,
+    val displayIcon: String?,
+    val levels: List<ValorantBuddyLevel> = emptyList()
+)
+
+data class ValorantBuddyLevel(
+    val uuid: String,
+    val displayName: String,
+    val displayIcon: String?
+)
+
+data class ValorantSpray(
+    val uuid: String,
+    val displayName: String,
+    val displayIcon: String?,
+    val fullTransparentIcon: String?,
+    val animationPng: String?,
+    val animationGif: String?
+)

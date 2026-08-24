@@ -187,7 +187,8 @@ fun ValoApp() {
                         val viewModel: StoreViewModel = hiltViewModel()
                         StoreDetailScreen(
                             item = key.item,
-                            viewModel = viewModel
+                            viewModel = viewModel,
+                            onBack = { backStack.removeLastOrNull() }
                         )
                     }
                 }

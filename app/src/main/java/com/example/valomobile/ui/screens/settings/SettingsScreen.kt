@@ -118,7 +118,7 @@ fun SettingsScreen(
             ) {
                 Icon(Icons.AutoMirrored.Rounded.Logout, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Log out of Riot Games", fontWeight = FontWeight.Bold)
+                Text("Exit to home screen", fontWeight = FontWeight.Bold)
             }
         }
     }

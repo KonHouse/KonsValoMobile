@@ -331,6 +331,7 @@ class RiotLoginActivity : ComponentActivity() {
             pollingRunnable?.let { mainHandler.removeCallbacks(it) }
             try {
                 webView.stopLoading()
+                android.webkit.CookieManager.getInstance().flush()
             } catch (e: Exception) {
                 // ignore
             }

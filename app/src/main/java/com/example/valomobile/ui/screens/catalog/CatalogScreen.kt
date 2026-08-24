@@ -1,28 +1,19 @@
 package com.example.valomobile.ui.screens.catalog
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Sort
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 import com.example.valomobile.domain.model.SkinItem
+import com.example.valomobile.ui.components.SkinItemCard
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -95,87 +86,13 @@ fun CatalogScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(skins, key = { it.uuid }) { skin ->
-                    SkinCard(
-                        skin = skin,
+                    SkinItemCard(
+                        item = skin,
                         isWishlisted = wishlist.contains(skin.skinUuid),
                         onWishlistToggle = { viewModel.toggleWishlist(skin) },
                         onClick = { onItemClick(skin) }
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun SkinCard(
-    skin: SkinItem,
-    isWishlisted: Boolean,
-    onWishlistToggle: () -> Unit,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Box {
-            Column {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(skin.displayIcon)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = skin.displayName,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp)
-                        .padding(8.dp),
-                    contentScale = ContentScale.Fit
-                )
-                Text(
-                    text = skin.displayName,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (skin.tier != "Select") {
-                        Text(
-                            text = skin.tier,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    } else {
-                        Spacer(modifier = Modifier.width(1.dp))
-                    }
-                    Text(
-                        text = if (skin.finalPrice > 0) "${skin.finalPrice} VP" else "Varies",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-            IconButton(
-                onClick = onWishlistToggle,
-                modifier = Modifier.align(Alignment.TopEnd)
-            ) {
-                Icon(
-                    imageVector = if (isWishlisted) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = "Wishlist",
-                    tint = if (isWishlisted) Color.Red else Color.Gray,
-                    modifier = Modifier.size(24.dp)
-                )
             }
         }
     }
