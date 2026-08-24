@@ -85,3 +85,6 @@ ValoMobile isn't endorsed by Riot Games and doesn't reflect the views or opinion
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE).
+
+## 🤖 AI
+This project was built entirely through vibe coding using AI tools. It is provided as-is, mainly as an experiment and a fun exploration of AI-assisted development.
