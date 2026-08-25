@@ -13,9 +13,13 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,6 +63,22 @@ fun ValoApp() {
         if (isLoggedIn) ValoNavKey.StoreRotation as NavKey else ValoNavKey.Connect as NavKey
     )
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>()
+    
+    // Auto-refresh store and balances when app returns to foreground
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (storeViewModel.isLoggedIn) {
+                    storeViewModel.loadData(silent = true)
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
     
     val currentKey = backStack.last()
     val showNavigation = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings && currentKey !is ValoNavKey.VpCalculator

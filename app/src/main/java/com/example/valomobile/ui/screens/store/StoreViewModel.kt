@@ -12,7 +12,10 @@ import com.example.valomobile.domain.model.Bundle
 import com.example.valomobile.domain.model.SkinItem
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -25,6 +28,10 @@ class StoreViewModel @Inject constructor(
     private val catalogRepository: SkinCatalogRepository,
     private val wishlistDao: WishlistDao
 ) : ViewModel() {
+
+    companion object {
+        private const val AUTO_REFRESH_INTERVAL_MS = 45_000L // 45 seconds periodic check
+    }
 
     private val _storeRotation = MutableStateFlow<List<SkinItem>>(emptyList())
     val storeRotation: StateFlow<List<SkinItem>> = _storeRotation.asStateFlow()
@@ -44,6 +51,8 @@ class StoreViewModel @Inject constructor(
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private var autoRefreshJob: Job? = null
+
     val isLoggedIn: Boolean
         get() = authRepository.isLoggedIn
 
@@ -56,8 +65,10 @@ class StoreViewModel @Inject constructor(
         viewModelScope.launch {
             authRepository.sessionState.collect { isLogged ->
                 if (isLogged) {
-                    loadData()
+                    loadData(silent = false)
+                    startPeriodicAutoRefresh()
                 } else {
+                    stopPeriodicAutoRefresh()
                     _storeRotation.value = emptyList()
                     _featuredBundles.value = emptyList()
                     _nightMarket.value = emptyList()
@@ -67,15 +78,38 @@ class StoreViewModel @Inject constructor(
         }
     }
 
-    fun loadData() {
+    private fun startPeriodicAutoRefresh() {
+        autoRefreshJob?.cancel()
+        autoRefreshJob = viewModelScope.launch {
+            while (isActive) {
+                delay(AUTO_REFRESH_INTERVAL_MS)
+                if (authRepository.isLoggedIn) {
+                    loadData(silent = true)
+                }
+            }
+        }
+    }
+
+    private fun stopPeriodicAutoRefresh() {
+        autoRefreshJob?.cancel()
+        autoRefreshJob = null
+    }
+
+    fun loadData(silent: Boolean = false) {
         viewModelScope.launch {
-            _isLoading.value = true
-            _error.value = null
+            if (!silent) {
+                _isLoading.value = true
+                _error.value = null
+            }
             try {
                 if (!authRepository.isLoggedIn) {
                     val refreshed = withContext(Dispatchers.IO) { authRepository.refreshSessionSilently() }
                     if (!refreshed && !authRepository.isLoggedIn) {
-                        throw IOException("Riot session expired. Please tap 'Check Your Shop' to reconnect.")
+                        if (!silent) {
+                            throw IOException("Riot session expired. Please tap 'Check Your Shop' to reconnect.")
+                        } else {
+                            return@launch
+                        }
                     }
                 }
 
@@ -85,22 +119,42 @@ class StoreViewModel @Inject constructor(
                 val userWallet = withContext(Dispatchers.IO) { repository.getWallet() }
 
                 val levelToSkinMap: Map<String, String> = catalogRepository.getLevelToSkinMap()
-                _storeRotation.value = rotation.map { item -> 
+                val newRotation = rotation.map { item -> 
                     item.copy(skinUuid = levelToSkinMap[item.uuid] ?: item.uuid) 
                 }
-                _featuredBundles.value = bundles.map { bundle ->
+                val newBundles = bundles.map { bundle ->
                     bundle.copy(items = bundle.items.map { item -> 
                         item.copy(skinUuid = levelToSkinMap[item.uuid] ?: item.uuid) 
                     })
                 }
-                _nightMarket.value = nightMarket.map { item -> 
+                val newNightMarket = nightMarket.map { item -> 
                     item.copy(skinUuid = levelToSkinMap[item.uuid] ?: item.uuid) 
                 }
-                _wallet.value = userWallet
+
+                // Update only if data actually changed (avoids unnecessary recompositions)
+                if (_storeRotation.value != newRotation) {
+                    _storeRotation.value = newRotation
+                }
+                if (_featuredBundles.value != newBundles) {
+                    _featuredBundles.value = newBundles
+                }
+                if (_nightMarket.value != newNightMarket) {
+                    _nightMarket.value = newNightMarket
+                }
+                if (_wallet.value != userWallet) {
+                    _wallet.value = userWallet
+                }
+                if (silent) {
+                    _error.value = null
+                }
             } catch (e: Exception) {
-                _error.value = e.message ?: "Failed to load Valorant store"
+                if (!silent) {
+                    _error.value = e.message ?: "Failed to load Valorant store"
+                }
             } finally {
-                _isLoading.value = false
+                if (!silent) {
+                    _isLoading.value = false
+                }
             }
         }
     }
@@ -125,5 +179,10 @@ class StoreViewModel @Inject constructor(
 
     fun isWishlisted(skinUuid: String): Boolean {
         return wishlist.value.contains(skinUuid)
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopPeriodicAutoRefresh()
     }
 }
