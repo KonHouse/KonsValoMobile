@@ -69,3 +69,13 @@ data class RiotBonusStoreOffer(
     @SerializedName("DiscountPercent") val discountPercent: Int = 0,
     @SerializedName("DiscountCosts") val discountCosts: Map<String, Int>? = null
 )
+
+data class RiotWalletRawResponse(
+    @SerializedName("Balances") val balances: Map<String, Int> = emptyMap()
+)
+
+data class UserWallet(
+    val vp: Int = 0,
+    val radianite: Int = 0,
+    val kingdomCredits: Int = 0
+)

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.valomobile.data.local.WishlistDao
 import com.example.valomobile.data.local.WishlistEntity
+import com.example.valomobile.data.remote.model.UserWallet
 import com.example.valomobile.data.repository.RiotAuthRepository
 import com.example.valomobile.data.repository.RiotStoreRepository
 import com.example.valomobile.data.repository.SkinCatalogRepository
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -33,11 +35,17 @@ class StoreViewModel @Inject constructor(
     private val _nightMarket = MutableStateFlow<List<SkinItem>>(emptyList())
     val nightMarket: StateFlow<List<SkinItem>> = _nightMarket.asStateFlow()
 
+    private val _wallet = MutableStateFlow(UserWallet())
+    val wallet: StateFlow<UserWallet> = _wallet.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    val isLoggedIn: Boolean
+        get() = authRepository.isLoggedIn
 
     val wishlist: StateFlow<Set<String>> = wishlistDao.getAllWishlistItems()
         .map { items -> items.map { it.uuid }.toSet() }
@@ -53,21 +61,28 @@ class StoreViewModel @Inject constructor(
                     _storeRotation.value = emptyList()
                     _featuredBundles.value = emptyList()
                     _nightMarket.value = emptyList()
+                    _wallet.value = UserWallet()
                 }
             }
         }
     }
 
     fun loadData() {
-        if (!authRepository.isLoggedIn) return
-
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
             try {
+                if (!authRepository.isLoggedIn) {
+                    val refreshed = withContext(Dispatchers.IO) { authRepository.refreshSessionSilently() }
+                    if (!refreshed && !authRepository.isLoggedIn) {
+                        throw IOException("Riot session expired. Please tap 'Check Your Shop' to reconnect.")
+                    }
+                }
+
                 val rotation = withContext(Dispatchers.IO) { repository.getStoreRotation() }
                 val bundles = withContext(Dispatchers.IO) { repository.getFeaturedBundles() }
                 val nightMarket = withContext(Dispatchers.IO) { repository.getNightMarket() }
+                val userWallet = withContext(Dispatchers.IO) { repository.getWallet() }
 
                 val levelToSkinMap: Map<String, String> = catalogRepository.getLevelToSkinMap()
                 _storeRotation.value = rotation.map { item -> 
@@ -81,6 +96,7 @@ class StoreViewModel @Inject constructor(
                 _nightMarket.value = nightMarket.map { item -> 
                     item.copy(skinUuid = levelToSkinMap[item.uuid] ?: item.uuid) 
                 }
+                _wallet.value = userWallet
             } catch (e: Exception) {
                 _error.value = e.message ?: "Failed to load Valorant store"
             } finally {

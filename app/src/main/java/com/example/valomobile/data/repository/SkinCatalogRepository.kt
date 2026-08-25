@@ -1,38 +1,31 @@
 package com.example.valomobile.data.repository
 
 import com.example.valomobile.data.remote.ValorantApiService
+import com.example.valomobile.data.remote.model.CatalogItemMeta
 import com.example.valomobile.data.remote.model.ValorantSkin
 import com.example.valomobile.domain.model.SkinItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
-
-data class CatalogItemMeta(
-    val uuid: String,
-    val displayName: String,
-    val displayIcon: String,
-    val itemType: String,
-    val price: Int,
-    val tier: String
-)
 
 @Singleton
 class SkinCatalogRepository @Inject constructor(
     private val apiService: ValorantApiService
 ) {
-    private var cachedTiers: Map<String, String> = emptyMap()
     private var cachedSkins: List<SkinItem> = emptyList()
     private var cachedRawSkins: Map<String, ValorantSkin> = emptyMap()
+    private var cachedTiers: Map<String, String> = emptyMap()
     private var levelToSkinMap: Map<String, String> = emptyMap()
     private var allCatalogItemMetaMap: Map<String, CatalogItemMeta> = emptyMap()
 
-    suspend fun ensureAllCatalogMetadataLoaded() = coroutineScope {
-        if (allCatalogItemMetaMap.isNotEmpty()) return@coroutineScope
+    suspend fun ensureAllCatalogMetadataLoaded() = withContext(Dispatchers.IO) {
+        if (allCatalogItemMetaMap.isNotEmpty()) return@withContext
 
         val tiersDeferred = async {
             try {
-                apiService.getContentTiers(language = "en-US").data.associate { it.uuid to it.displayName }
+                apiService.getContentTiers().data.associate { it.uuid to it.displayName }
             } catch (e: Exception) {
                 emptyMap()
             }
@@ -87,12 +80,13 @@ class SkinCatalogRepository @Inject constructor(
         // 1. Map Weapon Skins & Skin Levels
         for (skin in rawSkins) {
             val tier = cachedTiers[skin.contentTierUuid] ?: "Select"
-            val price = getPriceFromTier(tier)
+            val assetPath = skin.levels.firstOrNull()?.assetPath ?: skin.chromas.firstOrNull()?.assetPath
+            val price = getPriceFromTier(tier, skin.displayName, assetPath)
             val skinMeta = CatalogItemMeta(
                 uuid = skin.uuid,
                 displayName = skin.displayName,
                 displayIcon = skin.displayIcon ?: "",
-                itemType = "Weapon Skin",
+                itemType = if (isMelee(skin.displayName, assetPath)) "Melee" else "Weapon Skin",
                 price = price,
                 tier = tier
             )
@@ -144,7 +138,7 @@ class SkinCatalogRepository @Inject constructor(
 
         // 4. Map Sprays
         for (spray in rawSprays) {
-            val icon = spray.fullTransparentIcon ?: spray.displayIcon ?: spray.animationPng ?: ""
+            val icon = spray.fullTransparentIcon ?: spray.displayIcon ?: ""
             val sprayMeta = CatalogItemMeta(
                 uuid = spray.uuid,
                 displayName = spray.displayName,
@@ -162,12 +156,14 @@ class SkinCatalogRepository @Inject constructor(
             .filter { it.displayIcon != null }
             .map { skin ->
                 val tier = cachedTiers[skin.contentTierUuid] ?: "Select"
+                val assetPath = skin.levels.firstOrNull()?.assetPath ?: skin.chromas.firstOrNull()?.assetPath
+                val price = getPriceFromTier(tier, skin.displayName, assetPath)
                 SkinItem(
                     uuid = skin.uuid,
                     displayName = skin.displayName,
                     displayIcon = skin.displayIcon ?: "",
-                    weaponType = "Weapon",
-                    price = getPriceFromTier(tier),
+                    weaponType = if (isMelee(skin.displayName, assetPath)) "Melee" else "Weapon",
+                    price = price,
                     discount = 0,
                     tier = tier,
                     skinUuid = skin.uuid
@@ -206,7 +202,44 @@ class SkinCatalogRepository @Inject constructor(
         }
     }
 
-    fun getPriceFromTier(tier: String): Int {
+    fun isMelee(displayName: String, assetPath: String? = null): Boolean {
+        if (assetPath?.contains("Melee", ignoreCase = true) == true) return true
+        val meleeKeywords = listOf(
+            "Knife", "Melee", "Scythe", "Sword", "Dagger", "Blade", "Karambit", "Axe",
+            "Kunai", "Baton", "Staff", "Fan", "Claw", "Gauntlet", "Hammer", "Whip",
+            "Anchor", "Crescent", "Spellcaster", "Harvester", "Misericórdia", "Lock",
+            "Bio-Harvester", "Firefall", "Equilibrium", "Power Fist", "Terminus A-Quo",
+            "Mace", "Obsidiana", "Hack", "Sliver", "Cudgel", "Edge", "Boline", "Yaiba",
+            "Broken Blade", "Relic Stone", "Onimaru Kunitsuna", "Sparkswitch", "Firefly", "Katana"
+        )
+        return meleeKeywords.any { displayName.contains(it, ignoreCase = true) }
+    }
+
+    fun getPriceFromTier(tier: String, displayName: String = "", assetPath: String? = null): Int {
+        val melee = isMelee(displayName, assetPath)
+
+        if (melee) {
+            val special5350Keywords = listOf(
+                "Nocturnum", "Kuronami", "Evori", "Mystbloom", "Champions", "Ignite",
+                "LOCK//IN", "Misericórdia", "Aemondir", "Doombringer", "Imperium",
+                "Neo Frontier", "Overdrive", "Singularity", "Holomoku", "Arcane",
+                "Onimaru", "Combat Crafts", "VCT"
+            )
+            if (special5350Keywords.any { displayName.contains(it, ignoreCase = true) }) {
+                return 5350
+            }
+
+            return when {
+                tier.contains("Ultra", ignoreCase = true) -> 4950
+                tier.contains("Exclusive", ignoreCase = true) -> 4350
+                tier.contains("Premium", ignoreCase = true) -> 3550
+                tier.contains("Deluxe", ignoreCase = true) -> 2550
+                tier.contains("Select", ignoreCase = true) -> 1750
+                else -> 3550
+            }
+        }
+
+        // Standard Gun pricing
         return when {
             tier.contains("Select", ignoreCase = true) -> 875
             tier.contains("Deluxe", ignoreCase = true) -> 1275

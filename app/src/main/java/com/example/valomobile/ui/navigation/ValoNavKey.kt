@@ -24,6 +24,9 @@ sealed interface ValoNavKey : NavKey {
     data object Wishlist : ValoNavKey
 
     @Serializable
+    data object VpCalculator : ValoNavKey
+
+    @Serializable
     data object Settings : ValoNavKey
 
     @Serializable

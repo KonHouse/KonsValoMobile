@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.rounded.BrokenImage
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Storefront
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -42,6 +43,7 @@ import com.example.valomobile.domain.model.SkinItem
 fun BundlesScreen(
     viewModel: StoreViewModel,
     onItemClick: (SkinItem) -> Unit,
+    onNavigateToConnect: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val bundles by viewModel.featuredBundles.collectAsState()
@@ -51,9 +53,23 @@ fun BundlesScreen(
 
     if (isLoading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                CircularProgressIndicator(color = Color(0xFFFF4655))
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(
+                    text = "Loading bundles...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     } else if (error != null) {
+        val isSessionExpired = error?.contains("session", ignoreCase = true) == true
+            || error?.contains("expired", ignoreCase = true) == true
+            || error?.contains("log in", ignoreCase = true) == true
+            || error?.contains("token", ignoreCase = true) == true
+            || !viewModel.isLoggedIn
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -78,18 +94,49 @@ fun BundlesScreen(
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(20.dp))
-                Button(
-                    onClick = { viewModel.loadData() },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFFF4655),
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.height(48.dp)
-                ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Refresh Shop", fontWeight = FontWeight.Bold)
+
+                if (isSessionExpired && onNavigateToConnect != null) {
+                    Button(
+                        onClick = onNavigateToConnect,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF4655),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(48.dp)
+                    ) {
+                        Icon(Icons.Rounded.Storefront, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Check Your Shop (Reconnect)", fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.loadData() },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth(0.85f)
+                            .height(44.dp)
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Retry Refresh", fontSize = 13.sp)
+                    }
+                } else {
+                    Button(
+                        onClick = { viewModel.loadData() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF4655),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(48.dp)
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Refresh Shop", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -151,7 +198,7 @@ fun BundleCard(
                     )
                 )
             )
-            .padding(1.5.dp) // Glowing outer border
+            .padding(1.5.dp)
             .clip(RoundedCornerShape(18.5.dp))
             .background(
                 Brush.verticalGradient(
@@ -164,7 +211,6 @@ fun BundleCard(
             )
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Hero Bundle Image
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -184,7 +230,6 @@ fun BundleCard(
                     contentScale = ContentScale.Crop
                 )
 
-                // Subtle gradient overlay for contrast
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -198,7 +243,6 @@ fun BundleCard(
                         )
                 )
 
-                // Bundle Price Chip on top right of banner
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Color(0xFFFF4655),
@@ -216,7 +260,6 @@ fun BundleCard(
                 }
             }
 
-            // Bundle Info Header
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
                     text = bundle.displayName,
@@ -256,7 +299,6 @@ fun BundleCard(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // DIRECT VISUAL DISPLAY OF ALL SKINS IN BUNDLE
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     bundle.items.forEach { item ->
                         val isWishlisted = wishlist.contains(item.skinUuid)
@@ -293,7 +335,6 @@ fun BundleItemCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Weapon Icon Box with dark background
             Box(
                 modifier = Modifier
                     .size(width = 86.dp, height = 54.dp)
@@ -318,7 +359,6 @@ fun BundleItemCard(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Weapon Name & Price Info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = item.displayName,
@@ -332,6 +372,7 @@ fun BundleItemCard(
                     item.weaponType.contains("Buddy", ignoreCase = true) -> 475
                     item.weaponType.contains("Card", ignoreCase = true) -> 375
                     item.weaponType.contains("Spray", ignoreCase = true) -> 325
+                    item.weaponType.contains("Flex", ignoreCase = true) -> 1350
                     else -> 1775
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -344,7 +385,6 @@ fun BundleItemCard(
                 }
             }
 
-            // Wishlist Toggle Button
             IconButton(
                 onClick = onWishlistToggle,
                 modifier = Modifier

@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -30,7 +31,8 @@ import com.example.valomobile.domain.model.SkinItem
 @Composable
 fun WishlistScreen(
     viewModel: CatalogViewModel,
-    onItemClick: (SkinItem) -> Unit
+    onItemClick: (SkinItem) -> Unit,
+    onOpenCalculator: (() -> Unit)? = null
 ) {
     val items by viewModel.wishlistItems.collectAsState()
 
@@ -44,6 +46,27 @@ fun WishlistScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
+            if (onOpenCalculator != null) {
+                item {
+                    Button(
+                        onClick = onOpenCalculator,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF4655),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                    ) {
+                        Icon(Icons.Rounded.Calculate, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Calculate Needed VP", fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+
             items(items, key = { it.uuid }) { skin ->
                 WishlistItem(
                     skin = skin,

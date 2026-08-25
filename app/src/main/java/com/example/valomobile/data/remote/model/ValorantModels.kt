@@ -80,3 +80,12 @@ data class ValorantSpray(
     val animationPng: String?,
     val animationGif: String?
 )
+
+data class CatalogItemMeta(
+    val uuid: String,
+    val displayName: String,
+    val displayIcon: String,
+    val itemType: String,
+    val price: Int,
+    val tier: String
+)

@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Storefront
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -18,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.valomobile.domain.model.SkinItem
 import com.example.valomobile.ui.components.SkinItemCard
 
@@ -25,6 +27,7 @@ import com.example.valomobile.ui.components.SkinItemCard
 fun NightMarketScreen(
     viewModel: StoreViewModel,
     onItemClick: (SkinItem) -> Unit,
+    onNavigateToConnect: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val items by viewModel.nightMarket.collectAsState()
@@ -46,9 +49,23 @@ fun NightMarketScreen(
 
         if (isLoading) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Color(0xFFFF4655))
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "Loading night market...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         } else if (error != null) {
+            val isSessionExpired = error?.contains("session", ignoreCase = true) == true
+                || error?.contains("expired", ignoreCase = true) == true
+                || error?.contains("log in", ignoreCase = true) == true
+                || error?.contains("token", ignoreCase = true) == true
+                || !viewModel.isLoggedIn
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -73,18 +90,49 @@ fun NightMarketScreen(
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(20.dp))
-                    Button(
-                        onClick = { viewModel.loadData() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFFF4655),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.height(48.dp)
-                    ) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Refresh Shop", fontWeight = FontWeight.Bold)
+
+                    if (isSessionExpired && onNavigateToConnect != null) {
+                        Button(
+                            onClick = onNavigateToConnect,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFFF4655),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(48.dp)
+                        ) {
+                            Icon(Icons.Rounded.Storefront, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Check Your Shop (Reconnect)", fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.loadData() },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth(0.85f)
+                                .height(44.dp)
+                        ) {
+                            Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Retry Refresh", fontSize = 13.sp)
+                        }
+                    } else {
+                        Button(
+                            onClick = { viewModel.loadData() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFFF4655),
+                                contentColor = Color.White
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.height(48.dp)
+                        ) {
+                            Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Refresh Shop", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

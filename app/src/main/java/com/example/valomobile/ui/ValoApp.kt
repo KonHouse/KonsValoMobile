@@ -1,6 +1,9 @@
 package com.example.valomobile.ui
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.List
 import androidx.compose.material.icons.rounded.*
@@ -10,9 +13,17 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
 import androidx.compose.material3.adaptive.navigation3.ListDetailSceneStrategy
 import androidx.compose.material3.adaptive.navigation3.rememberListDetailSceneStrategy
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
@@ -20,7 +31,11 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import androidx.window.core.layout.WindowWidthSizeClass
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.valomobile.data.remote.model.UserWallet
 import com.example.valomobile.ui.navigation.ValoNavKey
+import com.example.valomobile.ui.screens.calculator.VpCalculatorScreen
 import com.example.valomobile.ui.screens.catalog.CatalogScreen
 import com.example.valomobile.ui.screens.catalog.CatalogViewModel
 import com.example.valomobile.ui.screens.catalog.WishlistScreen
@@ -29,12 +44,16 @@ import com.example.valomobile.ui.screens.login.RiotLoginViewModel
 import com.example.valomobile.ui.screens.settings.SettingsScreen
 import com.example.valomobile.ui.screens.settings.SettingsViewModel
 import com.example.valomobile.ui.screens.store.*
+import java.text.NumberFormat
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun ValoApp() {
     val loginViewModel: RiotLoginViewModel = hiltViewModel()
+    val storeViewModel: StoreViewModel = hiltViewModel()
     val isLoggedIn = loginViewModel.isLoggedIn()
+    val wallet by storeViewModel.wallet.collectAsState()
     
     val backStack = rememberNavBackStack(
         if (isLoggedIn) ValoNavKey.StoreRotation as NavKey else ValoNavKey.Connect as NavKey
@@ -42,8 +61,8 @@ fun ValoApp() {
     val listDetailStrategy = rememberListDetailSceneStrategy<NavKey>()
     
     val currentKey = backStack.last()
-    val showNavigation = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings
-    val showTopBar = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings
+    val showNavigation = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings && currentKey !is ValoNavKey.VpCalculator
+    val showTopBar = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings && currentKey !is ValoNavKey.VpCalculator
     
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val useRail = showNavigation && adaptiveInfo.windowSizeClass.windowWidthSizeClass != WindowWidthSizeClass.COMPACT
@@ -60,8 +79,19 @@ fun ValoApp() {
             topBar = {
                 if (showTopBar) {
                     TopAppBar(
-                        title = { Text("ValoMobile") },
+                        title = { Text("ValoMobile", fontWeight = FontWeight.Black) },
                         actions = {
+                            if (showNavigation) {
+                                WalletBadgeBar(
+                                    wallet = wallet,
+                                    onVpClick = {
+                                        if (currentKey !is ValoNavKey.VpCalculator) {
+                                            backStack.add(ValoNavKey.VpCalculator)
+                                        }
+                                    },
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                            }
                             IconButton(onClick = { backStack.add(ValoNavKey.Settings) }) {
                                 Icon(Icons.Rounded.Settings, contentDescription = "Settings")
                             }
@@ -101,11 +131,20 @@ fun ValoApp() {
                             detailPlaceholder = { StoreDetailPlaceholder("Select a skin from the store") }
                         )
                     ) {
-                        val viewModel: StoreViewModel = hiltViewModel()
                         StoreRotationScreen(
-                            viewModel = viewModel,
+                            viewModel = storeViewModel,
                             onItemClick = { item ->
                                 backStack.add(ValoNavKey.StoreDetail(item))
+                            },
+                            onNavigateToConnect = {
+                                loginViewModel.resetState()
+                                while (backStack.isNotEmpty()) {
+                                    backStack.removeLastOrNull()
+                                }
+                                backStack.add(ValoNavKey.Connect)
+                            },
+                            onOpenCalculator = {
+                                backStack.add(ValoNavKey.VpCalculator)
                             }
                         )
                     }
@@ -115,11 +154,17 @@ fun ValoApp() {
                             detailPlaceholder = { StoreDetailPlaceholder("Select an item from the bundle") }
                         )
                     ) {
-                        val viewModel: StoreViewModel = hiltViewModel()
                         BundlesScreen(
-                            viewModel = viewModel,
+                            viewModel = storeViewModel,
                             onItemClick = { item ->
                                 backStack.add(ValoNavKey.StoreDetail(item))
+                            },
+                            onNavigateToConnect = {
+                                loginViewModel.resetState()
+                                while (backStack.isNotEmpty()) {
+                                    backStack.removeLastOrNull()
+                                }
+                                backStack.add(ValoNavKey.Connect)
                             }
                         )
                     }
@@ -129,11 +174,17 @@ fun ValoApp() {
                             detailPlaceholder = { StoreDetailPlaceholder("Select a discounted skin") }
                         )
                     ) {
-                        val viewModel: StoreViewModel = hiltViewModel()
                         NightMarketScreen(
-                            viewModel = viewModel,
+                            viewModel = storeViewModel,
                             onItemClick = { item ->
                                 backStack.add(ValoNavKey.StoreDetail(item))
+                            },
+                            onNavigateToConnect = {
+                                loginViewModel.resetState()
+                                while (backStack.isNotEmpty()) {
+                                    backStack.removeLastOrNull()
+                                }
+                                backStack.add(ValoNavKey.Connect)
                             }
                         )
                     }
@@ -154,7 +205,7 @@ fun ValoApp() {
 
                     entry<ValoNavKey.Wishlist>(
                         metadata = ListDetailSceneStrategy.listPane(
-                            detailPlaceholder = { StoreDetailPlaceholder("Select a skin from your wishlist") }
+                            detailPlaceholder = { StoreDetailPlaceholder("Select a wishlisted skin") }
                         )
                     ) {
                         val viewModel: CatalogViewModel = hiltViewModel()
@@ -162,7 +213,16 @@ fun ValoApp() {
                             viewModel = viewModel,
                             onItemClick = { item ->
                                 backStack.add(ValoNavKey.StoreDetail(item))
+                            },
+                            onOpenCalculator = {
+                                backStack.add(ValoNavKey.VpCalculator)
                             }
+                        )
+                    }
+
+                    entry<ValoNavKey.VpCalculator> {
+                        VpCalculatorScreen(
+                            onBack = { backStack.removeLastOrNull() }
                         )
                     }
 
@@ -184,10 +244,9 @@ fun ValoApp() {
                     entry<ValoNavKey.StoreDetail>(
                         metadata = ListDetailSceneStrategy.detailPane()
                     ) { key ->
-                        val viewModel: StoreViewModel = hiltViewModel()
                         StoreDetailScreen(
                             item = key.item,
-                            viewModel = viewModel,
+                            viewModel = storeViewModel,
                             onBack = { backStack.removeLastOrNull() }
                         )
                     }
@@ -198,11 +257,87 @@ fun ValoApp() {
 }
 
 @Composable
+fun WalletBadgeBar(
+    wallet: UserWallet,
+    onVpClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val numberFormat = remember { NumberFormat.getIntegerInstance(Locale.US) }
+
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        // Valorant Points (VP) - Clickable to open VP Calculator!
+        WalletChip(
+            iconUrl = "https://media.valorant-api.com/currencies/85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741/displayicon.png",
+            amount = numberFormat.format(wallet.vp),
+            contentDescription = "Valorant Points (Tap to open Calculator)",
+            onClick = onVpClick
+        )
+
+        // Radianite Points (RP)
+        WalletChip(
+            iconUrl = "https://media.valorant-api.com/currencies/e59aa87c-4cbf-517a-5983-6e81511be9b7/displayicon.png",
+            amount = numberFormat.format(wallet.radianite),
+            contentDescription = "Radianite Points"
+        )
+
+        // Kingdom Credits (KC)
+        WalletChip(
+            iconUrl = "https://media.valorant-api.com/currencies/85ca954a-41f2-ce94-9b45-8ca3dd39a00d/displayicon.png",
+            amount = numberFormat.format(wallet.kingdomCredits),
+            contentDescription = "Kingdom Credits"
+        )
+    }
+}
+
+@Composable
+fun WalletChip(
+    iconUrl: String,
+    amount: String,
+    contentDescription: String,
+    onClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0xFF141C26).copy(alpha = 0.85f),
+        border = BorderStroke(1.dp, Color(0xFF263445).copy(alpha = 0.6f)),
+        modifier = modifier.then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.5.dp)
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(iconUrl)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = contentDescription,
+                modifier = Modifier.size(14.dp),
+                contentScale = ContentScale.Fit
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = amount,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+    }
+}
+
+@Composable
 fun ValoNavigationBar(
     currentKey: NavKey,
-    backStack: NavBackStack<NavKey>
+    backStack: NavBackStack<NavKey>,
+    modifier: Modifier = Modifier
 ) {
-    NavigationBar {
+    NavigationBar(modifier = modifier) {
         NavigationBarItem(
             selected = currentKey is ValoNavKey.StoreRotation || (currentKey is ValoNavKey.StoreDetail && backStack.any { it is ValoNavKey.StoreRotation }),
             onClick = { 
@@ -254,19 +389,10 @@ fun ValoNavigationBar(
 @Composable
 fun ValoNavigationRail(
     currentKey: NavKey,
-    backStack: NavBackStack<NavKey>
+    backStack: NavBackStack<NavKey>,
+    modifier: Modifier = Modifier
 ) {
-    NavigationRail(
-        modifier = Modifier.fillMaxHeight(),
-        header = {
-            Icon(
-                Icons.Rounded.Shield,
-                contentDescription = null,
-                modifier = Modifier.padding(vertical = 16.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-    ) {
+    NavigationRail(modifier = modifier) {
         NavigationRailItem(
             selected = currentKey is ValoNavKey.StoreRotation || (currentKey is ValoNavKey.StoreDetail && backStack.any { it is ValoNavKey.StoreRotation }),
             onClick = { 

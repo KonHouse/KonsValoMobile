@@ -282,6 +282,40 @@ class RiotStoreRepository @Inject constructor(
         result
     }
 
+    suspend fun getWallet(): UserWallet = withContext(Dispatchers.IO) {
+        val accessToken = authRepository.getAccessToken()
+        val entitlementsToken = authRepository.getEntitlementsToken()
+        val puuid = authRepository.getPuuid() ?: return@withContext UserWallet()
+        val region = authRepository.getRegion()
+        val clientVersion = authRepository.getClientVersion()
+
+        val walletUrl = "https://pd.$region.a.pvp.net/store/v1/wallet/$puuid"
+
+        try {
+            val raw = storeApiService.getWallet(
+                url = walletUrl,
+                authHeader = "Bearer $accessToken",
+                entitlementsToken = entitlementsToken ?: "",
+                clientVersion = clientVersion,
+                clientPlatform = RiotAuthRepository.CLIENT_PLATFORM
+            )
+            val balances = raw.balances
+            val vp = balances["85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741"] 
+                ?: balances.entries.firstOrNull { it.key.startsWith("85ad13f7", ignoreCase = true) }?.value 
+                ?: 0
+            val radianite = balances["e59aa87c-4cbf-517a-5983-6e81511be9b7"] 
+                ?: balances.entries.firstOrNull { it.key.startsWith("e59aa87c", ignoreCase = true) }?.value 
+                ?: 0
+            val kingdomCredits = balances["85ca954a-41f2-ce94-9b45-8ca3dd39a00d"] 
+                ?: balances.entries.firstOrNull { it.key.startsWith("85ca954a", ignoreCase = true) }?.value 
+                ?: 0
+            UserWallet(vp = vp, radianite = radianite, kingdomCredits = kingdomCredits)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to fetch user wallet balances", e)
+            UserWallet()
+        }
+    }
+
     private fun extractCost(costObj: Any?, fallback: Int): Int {
         if (costObj == null) return fallback
         if (costObj is Number) return costObj.toInt()
