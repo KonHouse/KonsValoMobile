@@ -50,14 +50,6 @@ class RiotStoreRepository @Inject constructor(
         val storefrontUrl = "https://pd.$region.a.pvp.net/store/v3/storefront/$puuid"
 
         if (accessToken.isNullOrBlank() || entitlementsToken.isNullOrBlank()) {
-            val refreshed = authRepository.refreshSessionSilently()
-            if (refreshed) {
-                accessToken = authRepository.getAccessToken()
-                entitlementsToken = authRepository.getEntitlementsToken()
-            }
-        }
-
-        if (accessToken.isNullOrBlank() || entitlementsToken.isNullOrBlank()) {
             throw IOException("No active Riot login session.")
         }
 
@@ -72,6 +64,7 @@ class RiotStoreRepository @Inject constructor(
         } catch (e: Exception) {
             val isAuthError = e.message?.contains("400") == true 
                 || e.message?.contains("401") == true 
+                || e.message?.contains("403") == true 
                 || e.message?.contains("BAD_CLAIMS") == true 
                 || e.message?.contains("Unauthorized") == true
 
@@ -95,9 +88,8 @@ class RiotStoreRepository @Inject constructor(
                         }
                     }
                 }
-                Log.w(TAG, "Session expired and could not be refreshed. Logging out.")
-                authRepository.logout()
-                throw IOException("Riot session expired. Please log in again.", e)
+                // DO NOT logout automatically here! Throw clean exception so UI displays reconnect button
+                throw IOException("Riot session expired. Please tap 'Check Your Shop' to renew your tokens.", e)
             }
 
             Log.e(TAG, "Storefront API error", e)
@@ -145,68 +137,28 @@ class RiotStoreRepository @Inject constructor(
     suspend fun getFeaturedBundles(): List<Bundle> = withContext(Dispatchers.IO) {
         ensureMetadata()
         val raw = fetchStorefrontRaw()
-        val bundleWrapper = raw.featuredBundle ?: return@withContext emptyList()
-        val rawBundles = bundleWrapper.bundles.ifEmpty {
-            bundleWrapper.bundle?.let { listOf(it) } ?: emptyList()
-        }
+        val featuredBundle = raw.featuredBundle ?: return@withContext emptyList()
+        val rawBundles = featuredBundle.bundles ?: listOfNotNull(featuredBundle.bundle)
 
         val result = mutableListOf<Bundle>()
         for (b in rawBundles) {
             val bundleUuid = b.dataAssetId ?: b.id ?: ""
             val bundleMeta = cachedBundlesMeta[bundleUuid.lowercase()]
-            val bundleTitle = bundleMeta?.displayName
-                ?.replace(" Bundle", "", ignoreCase = true)
-                ?.replace(" Collection", "", ignoreCase = true)
-                ?: "Exclusive"
 
             val items = mutableListOf<SkinItem>()
-            val rawItems = b.itemOffers.ifEmpty { b.items }
+            val itemOffers = b.items ?: emptyList()
 
-            for (item in rawItems) {
-                val reward = item.offer?.rewards?.firstOrNull() ?: item.item
-                val itemTypeId = reward?.itemTypeId?.lowercase() ?: ""
-                val itemUuid = reward?.itemId
-                    ?: item.bundleItemOfferId
-                    ?: item.itemId
-                    ?: item.offer?.offerId
-                    ?: ""
+            for (item in itemOffers) {
+                val itemUuid = item.item?.itemId ?: ""
+                val meta = catalogRepository.getItemMeta(itemUuid.lowercase())
 
-                val meta = catalogRepository.getItemMeta(itemUuid)
-
-                val itemType = meta?.itemType ?: when {
-                    itemTypeId.contains("3f296c07") -> "Player Card"
-                    itemTypeId.contains("dd3bf334") -> "Gun Buddy"
-                    itemTypeId.contains("dbe185c1") -> "Spray"
-                    itemTypeId.contains("de7bf618") -> "Player Title"
-                    itemTypeId.contains("b0254c7c") -> "Flex"
-                    item.basePrice == 1350 || item.basePrice == 1000 -> "Flex"
-                    item.basePrice == 375 -> "Player Card"
-                    item.basePrice == 475 -> "Gun Buddy"
-                    item.basePrice == 325 -> "Spray"
-                    item.basePrice != null && item.basePrice!! > 1500 -> "Weapon Skin"
-                    else -> "Flex"
-                }
-
-                val displayName = meta?.displayName ?: when (itemType) {
-                    "Flex" -> "$bundleTitle Flex"
-                    "Player Card" -> "$bundleTitle Card"
-                    "Gun Buddy" -> "$bundleTitle Buddy"
-                    "Spray" -> "$bundleTitle Spray"
-                    "Player Title" -> "$bundleTitle Title"
-                    else -> "$bundleTitle Item"
-                }
-
-                val displayIcon = meta?.displayIcon?.ifBlank { null }
-                    ?: bundleMeta?.displayIcon
-                    ?: bundleMeta?.verticalPromoImage
-                    ?: ""
-
-                val defaultBasePrice = meta?.price ?: when (itemType) {
+                val displayName = meta?.displayName ?: "Valorant Item"
+                val displayIcon = meta?.displayIcon ?: ""
+                val itemType = meta?.itemType ?: "Weapon Skin"
+                val defaultBasePrice = when (itemType) {
                     "Player Card" -> 375
                     "Gun Buddy" -> 475
                     "Spray" -> 325
-                    "Player Title" -> 200
-                    "Flex" -> 1350
                     else -> 1775
                 }
 
@@ -263,7 +215,6 @@ class RiotStoreRepository @Inject constructor(
             val meta = catalogRepository.getItemMeta(key)
 
             val basePrice = extractCost(offer.offer?.cost, 1775)
-            val discountCost = extractCost(offer.discountCosts, basePrice)
             val discount = offer.discountPercent
 
             result.add(
@@ -283,37 +234,71 @@ class RiotStoreRepository @Inject constructor(
     }
 
     suspend fun getWallet(): UserWallet = withContext(Dispatchers.IO) {
-        val accessToken = authRepository.getAccessToken()
-        val entitlementsToken = authRepository.getEntitlementsToken()
+        var accessToken = authRepository.getAccessToken()
+        var entitlementsToken = authRepository.getEntitlementsToken()
         val puuid = authRepository.getPuuid() ?: return@withContext UserWallet()
         val region = authRepository.getRegion()
         val clientVersion = authRepository.getClientVersion()
 
         val walletUrl = "https://pd.$region.a.pvp.net/store/v1/wallet/$puuid"
 
-        try {
-            val raw = storeApiService.getWallet(
-                url = walletUrl,
-                authHeader = "Bearer $accessToken",
-                entitlementsToken = entitlementsToken ?: "",
-                clientVersion = clientVersion,
-                clientPlatform = RiotAuthRepository.CLIENT_PLATFORM
-            )
-            val balances = raw.balances
-            val vp = balances["85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741"] 
-                ?: balances.entries.firstOrNull { it.key.startsWith("85ad13f7", ignoreCase = true) }?.value 
-                ?: 0
-            val radianite = balances["e59aa87c-4cbf-517a-5983-6e81511be9b7"] 
-                ?: balances.entries.firstOrNull { it.key.startsWith("e59aa87c", ignoreCase = true) }?.value 
-                ?: 0
-            val kingdomCredits = balances["85ca954a-41f2-ce94-9b45-8ca3dd39a00d"] 
-                ?: balances.entries.firstOrNull { it.key.startsWith("85ca954a", ignoreCase = true) }?.value 
-                ?: 0
-            UserWallet(vp = vp, radianite = radianite, kingdomCredits = kingdomCredits)
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to fetch user wallet balances", e)
-            UserWallet()
+        if (accessToken.isNullOrBlank() || entitlementsToken.isNullOrBlank()) {
+            return@withContext UserWallet()
         }
+
+        try {
+            return@withContext fetchWalletRaw(walletUrl, accessToken, entitlementsToken, clientVersion)
+        } catch (e: Exception) {
+            val isAuthError = e.message?.contains("400") == true 
+                || e.message?.contains("401") == true 
+                || e.message?.contains("403") == true 
+                || e.message?.contains("BAD_CLAIMS") == true 
+                || e.message?.contains("Unauthorized") == true
+
+            if (isAuthError) {
+                Log.w(TAG, "Wallet request failed with auth error, attempting silent refresh...", e)
+                val refreshed = authRepository.refreshSessionSilently()
+                if (refreshed) {
+                    val newAccessToken = authRepository.getAccessToken()
+                    val newEntitlementsToken = authRepository.getEntitlementsToken()
+                    if (!newAccessToken.isNullOrBlank() && !newEntitlementsToken.isNullOrBlank()) {
+                        try {
+                            return@withContext fetchWalletRaw(walletUrl, newAccessToken, newEntitlementsToken, authRepository.getClientVersion())
+                        } catch (retryEx: Exception) {
+                            Log.w(TAG, "Retry getWallet failed", retryEx)
+                        }
+                    }
+                }
+            }
+            Log.w(TAG, "Failed to fetch user wallet balances", e)
+            return@withContext UserWallet()
+        }
+    }
+
+    private suspend fun fetchWalletRaw(
+        walletUrl: String,
+        accessToken: String,
+        entitlementsToken: String,
+        clientVersion: String
+    ): UserWallet {
+        val raw = storeApiService.getWallet(
+            url = walletUrl,
+            authHeader = "Bearer $accessToken",
+            entitlementsToken = entitlementsToken,
+            clientVersion = clientVersion,
+            clientPlatform = RiotAuthRepository.CLIENT_PLATFORM
+        )
+        val balances = raw.balances
+        val vp = balances["85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741"] 
+            ?: balances.entries.firstOrNull { it.key.startsWith("85ad13f7", ignoreCase = true) }?.value 
+            ?: 0
+        val radianite = balances["e59aa87c-4cbf-517a-5983-6e81511be9b7"] 
+            ?: balances.entries.firstOrNull { it.key.startsWith("e59aa87c", ignoreCase = true) }?.value 
+            ?: 0
+        val kingdomCredits = balances["85ca954a-41f2-ce94-9b45-8ca3dd39a00d"] 
+            ?: balances.entries.firstOrNull { it.key.startsWith("85ca954a", ignoreCase = true) }?.value 
+            ?: 0
+        return UserWallet(vp = vp, radianite = radianite, kingdomCredits = kingdomCredits)
     }
 
     private fun extractCost(costObj: Any?, fallback: Int): Int {

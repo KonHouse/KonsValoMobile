@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Block all cleartext HTTP traffic globally -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Enforce HTTPS and strict TLS for Riot Games & Valorant endpoints -->
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">riotgames.com</domain>
+        <domain includeSubdomains="true">playvalorant.com</domain>
+        <domain includeSubdomains="true">pvp.net</domain>
+        <domain includeSubdomains="true">valorant-api.com</domain>
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>

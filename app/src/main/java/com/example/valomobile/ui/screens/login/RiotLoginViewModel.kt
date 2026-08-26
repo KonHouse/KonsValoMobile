@@ -116,11 +116,11 @@ class RiotLoginViewModel @Inject constructor(
         }
     }
 
-    fun loginWithTokens(accessToken: String, idToken: String) {
+    fun loginWithTokens(accessToken: String, idToken: String, rawCookies: String? = null) {
         _uiState.value = LoginState.Loading("Authenticating Riot account...")
 
         viewModelScope.launch {
-            when (val result = authRepository.loginWithTokens(accessToken, idToken)) {
+            when (val result = authRepository.loginWithTokens(accessToken, idToken, rawCookies)) {
                 is RiotAuthResult.Success -> {
                     _uiState.value = LoginState.Success(result.gameName, result.tagLine)
                 }

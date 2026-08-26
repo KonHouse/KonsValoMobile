@@ -99,7 +99,9 @@ class RiotLoginActivity : ComponentActivity() {
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
-                databaseEnabled = true
+                allowFileAccess = false
+                allowContentAccess = false
+                setGeolocationEnabled(false)
                 useWideViewPort = true
                 loadWithOverviewMode = true
                 setSupportZoom(false)
@@ -135,8 +137,19 @@ class RiotLoginActivity : ComponentActivity() {
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val url = request?.url?.toString() ?: ""
-                    Log.d("RiotLogin", "shouldOverrideUrlLoading: $url")
-                    return checkAndHandleUrl(url)
+                    val host = request?.url?.host ?: ""
+                    
+                    if (checkAndHandleUrl(url)) {
+                        return true
+                    }
+
+                    // Security check: Only allow navigation to official Riot Games domains
+                    val isAllowedDomain = host.endsWith("riotgames.com") || host.endsWith("playvalorant.com")
+                    if (!isAllowedDomain && url.startsWith("https://")) {
+                        Log.w("RiotLogin", "Blocked untrusted external navigation to: $url")
+                        return true
+                    }
+                    return false
                 }
 
                 override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
@@ -335,9 +348,15 @@ class RiotLoginActivity : ComponentActivity() {
             } catch (e: Exception) {
                 // ignore
             }
+            val cookies = try {
+                android.webkit.CookieManager.getInstance().getCookie("https://auth.riotgames.com") ?: ""
+            } catch (e: Exception) {
+                ""
+            }
             val resultIntent = Intent().apply {
                 putExtra(EXTRA_ACCESS_TOKEN, accessToken)
                 putExtra(EXTRA_ID_TOKEN, idToken)
+                putExtra(EXTRA_COOKIES, cookies)
             }
             runOnUiThread {
                 setResult(RESULT_OK, resultIntent)
@@ -351,6 +370,7 @@ class RiotLoginActivity : ComponentActivity() {
     companion object {
         const val EXTRA_ACCESS_TOKEN = "extra_access_token"
         const val EXTRA_ID_TOKEN = "extra_id_token"
+        const val EXTRA_COOKIES = "extra_cookies"
 
         private const val RIOT_AUTH_URL =
             "https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&response_type=token%20id_token&redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&scope=account%20openid&nonce=1"

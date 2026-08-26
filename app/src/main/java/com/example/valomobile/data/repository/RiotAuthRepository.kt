@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
+import android.webkit.CookieManager
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.example.valomobile.data.remote.RiotAuthApiService
@@ -14,6 +15,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -60,6 +63,7 @@ class RiotAuthRepository @Inject constructor(
     }
 
     private val cookieStore = mutableMapOf<String, String>()
+    private val refreshMutex = Mutex()
 
     private val _sessionState = MutableStateFlow(isLoggedIn)
     val sessionState: StateFlow<Boolean> = _sessionState.asStateFlow()
@@ -157,6 +161,8 @@ class RiotAuthRepository @Inject constructor(
 
     suspend fun loginWithRedirectUrl(redirectUrl: String): RiotAuthResult = withContext(Dispatchers.IO) {
         try {
+            // Also sync WebView cookies if available
+            syncWebViewCookies()
             finalizeFromUri(redirectUrl.trim())
         } catch (e: Exception) {
             RiotAuthResult.Error("Error processing login URL: ${e.message}")
@@ -186,8 +192,13 @@ class RiotAuthRepository @Inject constructor(
         return finalizeTokens(accessToken, idToken ?: accessToken)
     }
 
-    suspend fun loginWithTokens(accessToken: String, idToken: String): RiotAuthResult = withContext(Dispatchers.IO) {
+    suspend fun loginWithTokens(accessToken: String, idToken: String, rawCookies: String? = null): RiotAuthResult = withContext(Dispatchers.IO) {
         try {
+            if (!rawCookies.isNullOrBlank()) {
+                saveRawCookies(rawCookies)
+            } else {
+                syncWebViewCookies()
+            }
             finalizeTokens(accessToken.trim(), idToken.trim())
         } catch (e: Exception) {
             Log.e(TAG, "Error in loginWithTokens", e)
@@ -223,6 +234,9 @@ class RiotAuthRepository @Inject constructor(
             Log.w(TAG, "Failed to fetch latest client version, using fallback", e)
         }
 
+        // Sync and persist any cookies currently in CookieManager
+        syncWebViewCookies()
+
         // Save everything to EncryptedSharedPreferences
         sharedPreferences.edit()
             .putString(KEY_ACCESS_TOKEN, accessToken)
@@ -230,7 +244,7 @@ class RiotAuthRepository @Inject constructor(
             .putString(KEY_ENTITLEMENTS_TOKEN, entitlementsToken)
             .putString(KEY_PUUID, puuid)
             .putString(KEY_REGION, region)
-            .putString(KEY_GAME_NAME, gameName)
+            .putString(KEY_GAMEName, gameName)
             .putString(KEY_TAG_LINE, tagLine)
             .putString(KEY_CLIENT_VERSION, clientVersion)
             .putBoolean(KEY_LOGGED_IN, true)
@@ -246,24 +260,97 @@ class RiotAuthRepository @Inject constructor(
         )
     }
 
+    fun syncWebViewCookies() {
+        try {
+            val webViewCookies = CookieManager.getInstance().getCookie("https://auth.riotgames.com")
+            if (!webViewCookies.isNullOrBlank()) {
+                saveRawCookies(webViewCookies)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error reading webview cookies", e)
+        }
+    }
+
+    fun saveRawCookies(cookieString: String?) {
+        if (cookieString.isNullOrBlank()) return
+        ensureCookiesLoaded()
+        val parts = cookieString.split(';')
+        for (part in parts) {
+            val eqIdx = part.indexOf('=')
+            if (eqIdx > 0) {
+                val key = part.substring(0, eqIdx).trim()
+                val value = part.substring(eqIdx + 1).trim()
+                if (key.isNotBlank() && value.isNotBlank()) {
+                    cookieStore[key] = value
+                }
+            }
+        }
+        persistCookies()
+    }
+
     private fun storeCookies(setCookieHeaders: List<String>?) {
         if (setCookieHeaders == null) return
+        ensureCookiesLoaded()
         for (header in setCookieHeaders) {
             val cookiePart = header.split(';')[0]
             val eqIdx = cookiePart.indexOf('=')
             if (eqIdx > 0) {
                 val key = cookiePart.substring(0, eqIdx).trim()
                 val value = cookiePart.substring(eqIdx + 1).trim()
-                cookieStore[key] = value
+                if (key.isNotBlank() && value.isNotBlank()) {
+                    cookieStore[key] = value
+                }
             }
         }
-        val serialized = getCookieHeader()
-        if (serialized != null) {
+        persistCookies()
+    }
+
+    private fun ensureCookiesLoaded() {
+        if (cookieStore.isEmpty()) {
+            val saved = sharedPreferences.getString(KEY_COOKIES, null)
+            if (!saved.isNullOrBlank()) {
+                val parts = saved.split(';')
+                for (part in parts) {
+                    val eqIdx = part.indexOf('=')
+                    if (eqIdx > 0) {
+                        val key = part.substring(0, eqIdx).trim()
+                        val value = part.substring(eqIdx + 1).trim()
+                        if (key.isNotBlank() && value.isNotBlank()) {
+                            cookieStore[key] = value
+                        }
+                    }
+                }
+            }
+            try {
+                val webViewCookies = CookieManager.getInstance().getCookie("https://auth.riotgames.com")
+                if (!webViewCookies.isNullOrBlank()) {
+                    val parts = webViewCookies.split(';')
+                    for (part in parts) {
+                        val eqIdx = part.indexOf('=')
+                        if (eqIdx > 0) {
+                            val key = part.substring(0, eqIdx).trim()
+                            val value = part.substring(eqIdx + 1).trim()
+                            if (key.isNotBlank() && value.isNotBlank()) {
+                                cookieStore[key] = value
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    private fun persistCookies() {
+        val serialized = cookieStore.entries.joinToString("; ") { "${it.key}=${it.value}" }
+        if (serialized.isNotBlank()) {
             sharedPreferences.edit().putString(KEY_COOKIES, serialized).apply()
         }
     }
 
-    private fun getCookieHeader(): String? {
+    fun getCookieHeader(): String? {
+        ensureCookiesLoaded()
         if (cookieStore.isNotEmpty()) {
             return cookieStore.entries.joinToString("; ") { "${it.key}=${it.value}" }
         }
@@ -272,7 +359,7 @@ class RiotAuthRepository @Inject constructor(
             return saved
         }
         try {
-            val webViewCookies = android.webkit.CookieManager.getInstance().getCookie("https://auth.riotgames.com")
+            val webViewCookies = CookieManager.getInstance().getCookie("https://auth.riotgames.com")
             if (!webViewCookies.isNullOrBlank()) {
                 return webViewCookies
             }
@@ -282,36 +369,39 @@ class RiotAuthRepository @Inject constructor(
         return null
     }
 
-    suspend fun refreshSessionSilently(): Boolean = withContext(Dispatchers.IO) {
-        val cookies = getCookieHeader()
-        if (cookies.isNullOrBlank()) {
-            Log.d(TAG, "Cannot refresh session: no cookies found")
-            return@withContext false
-        }
+    suspend fun refreshSessionSilently(): Boolean = refreshMutex.withLock {
+        withContext(Dispatchers.IO) {
+            syncWebViewCookies()
+            val cookies = getCookieHeader()
+            if (cookies.isNullOrBlank()) {
+                Log.d(TAG, "Cannot refresh session: no cookies found")
+                return@withContext false
+            }
 
-        try {
-            val client = okhttp3.OkHttpClient.Builder()
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .build()
+            try {
+                val client = okhttp3.OkHttpClient.Builder()
+                    .followRedirects(false)
+                    .followSslRedirects(false)
+                    .build()
 
-            val request = okhttp3.Request.Builder()
-                .url(RIOT_AUTH_URL)
-                .header("Cookie", cookies)
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36")
-                .build()
+                val request = okhttp3.Request.Builder()
+                    .url(RIOT_AUTH_URL)
+                    .header("Cookie", cookies)
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36")
+                    .build()
 
-            val response = client.newCall(request).execute()
-            storeCookies(response.headers("Set-Cookie"))
+                val response = client.newCall(request).execute()
+                storeCookies(response.headers("Set-Cookie"))
 
-            val location = response.header("Location") ?: ""
-            if (location.contains("access_token=")) {
+                val location = response.header("Location") ?: ""
+                val responseBodyStr = response.body?.string() ?: ""
+
                 val tokenRegex = Regex("""access_token=([A-Za-z0-9\-_=.]+)""")
-                val accessTokenMatch = tokenRegex.find(location)
+                val accessTokenMatch = tokenRegex.find(location) ?: tokenRegex.find(responseBodyStr)
                 val accessToken = accessTokenMatch?.groupValues?.get(1)
 
                 val idTokenRegex = Regex("""id_token=([A-Za-z0-9\-_=.]+)""")
-                val idTokenMatch = idTokenRegex.find(location)
+                val idTokenMatch = idTokenRegex.find(location) ?: idTokenRegex.find(responseBodyStr)
                 val idToken = idTokenMatch?.groupValues?.get(1) ?: accessToken
 
                 if (!accessToken.isNullOrBlank()) {
@@ -321,12 +411,13 @@ class RiotAuthRepository @Inject constructor(
                         return@withContext true
                     }
                 }
+                
+                Log.w(TAG, "Silent session refresh returned response code ${response.code}, location: $location")
+                false
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in silent session refresh", e)
+                false
             }
-            Log.w(TAG, "Silent session refresh failed: location did not contain token ($location)")
-            false
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in silent session refresh", e)
-            false
         }
     }
 
@@ -339,15 +430,15 @@ class RiotAuthRepository @Inject constructor(
     fun getEntitlementsToken(): String? = sharedPreferences.getString(KEY_ENTITLEMENTS_TOKEN, null)
     fun getPuuid(): String? = sharedPreferences.getString(KEY_PUUID, null)
     fun getRegion(): String = sharedPreferences.getString(KEY_REGION, "eu") ?: "eu"
-    fun getGameName(): String? = sharedPreferences.getString(KEY_GAME_NAME, null)
+    fun getGameName(): String? = sharedPreferences.getString(KEY_GAMEName, null)
     fun getTagLine(): String? = sharedPreferences.getString(KEY_TAG_LINE, null)
     fun getClientVersion(): String = sharedPreferences.getString(KEY_CLIENT_VERSION, "release-13.02-shipping-17-5277781") ?: "release-13.02-shipping-17-5277781"
 
     fun logout() {
         cookieStore.clear()
         try {
-            android.webkit.CookieManager.getInstance().removeAllCookies(null)
-            android.webkit.CookieManager.getInstance().flush()
+            CookieManager.getInstance().removeAllCookies(null)
+            CookieManager.getInstance().flush()
         } catch (e: Exception) {
             // ignore
         }
@@ -365,12 +456,12 @@ class RiotAuthRepository @Inject constructor(
         private const val KEY_ENTITLEMENTS_TOKEN = "entitlements_token"
         private const val KEY_PUUID = "puuid"
         private const val KEY_REGION = "region"
-        private const val KEY_GAME_NAME = "game_name"
+        private const val KEY_GAMEName = "game_name"
         private const val KEY_TAG_LINE = "tag_line"
         private const val KEY_CLIENT_VERSION = "client_version"
         private const val KEY_COOKIES = "session_cookies"
 
-        private const val RIOT_AUTH_URL =
+        const val RIOT_AUTH_URL =
             "https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&response_type=token%20id_token&redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&scope=account%20openid&nonce=1"
 
         const val USER_AGENT = "RiotClient/63.0.9.4909983.4789131 rso-auth (Windows;10;;Professional, x64)"
