@@ -10,6 +10,9 @@ import com.example.valomobile.data.repository.RiotStoreRepository
 import com.example.valomobile.data.repository.SkinCatalogRepository
 import com.example.valomobile.domain.model.Bundle
 import com.example.valomobile.domain.model.SkinItem
+import com.example.valomobile.data.repository.DailyStreakRepository
+import com.example.valomobile.domain.model.DailyStreakInfo
+import com.example.valomobile.domain.model.StreakCheckInResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -26,7 +29,8 @@ class StoreViewModel @Inject constructor(
     private val repository: RiotStoreRepository,
     private val authRepository: RiotAuthRepository,
     private val catalogRepository: SkinCatalogRepository,
-    private val wishlistDao: WishlistDao
+    private val wishlistDao: WishlistDao,
+    private val dailyStreakRepository: DailyStreakRepository
 ) : ViewModel() {
 
     companion object {
@@ -45,6 +49,11 @@ class StoreViewModel @Inject constructor(
     private val _wallet = MutableStateFlow(UserWallet())
     val wallet: StateFlow<UserWallet> = _wallet.asStateFlow()
 
+    val streakInfo: StateFlow<DailyStreakInfo> = dailyStreakRepository.streakInfo
+
+    private val _celebrationEvent = MutableStateFlow<StreakCheckInResult?>(null)
+    val celebrationEvent: StateFlow<StreakCheckInResult?> = _celebrationEvent.asStateFlow()
+
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
@@ -61,10 +70,16 @@ class StoreViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     init {
+        // Automatically check daily streak on startup
+        checkDailyStreak()
+
         // Automatically reload store whenever user logs in or session updates
         viewModelScope.launch {
             authRepository.sessionState.collect { isLogged ->
                 if (isLogged) {
+                    val puuid = authRepository.getPuuid() ?: ""
+                    dailyStreakRepository.refreshStreakForAccount(puuid)
+                    checkDailyStreak()
                     loadData(silent = false)
                     startPeriodicAutoRefresh()
                 } else {
@@ -76,6 +91,18 @@ class StoreViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    fun checkDailyStreak() {
+        val puuid = authRepository.getPuuid() ?: ""
+        val result = dailyStreakRepository.recordDailyVisit(puuid = puuid)
+        if (result.isNewDay && result.isStreakIncreased) {
+            _celebrationEvent.value = result
+        }
+    }
+
+    fun dismissCelebration() {
+        _celebrationEvent.value = null
     }
 
     private fun startPeriodicAutoRefresh() {
@@ -144,6 +171,12 @@ class StoreViewModel @Inject constructor(
                 if (_wallet.value != userWallet) {
                     _wallet.value = userWallet
                 }
+
+                // Automatically archive today's store in local history
+                val puuid = authRepository.getPuuid()
+                if (!puuid.isNullOrBlank() && newRotation.isNotEmpty()) {
+                    dailyStreakRepository.saveTodayStore(newRotation, puuid)
+                }
                 if (silent) {
                     _error.value = null
                 }
@@ -179,6 +212,16 @@ class StoreViewModel @Inject constructor(
 
     fun isWishlisted(skinUuid: String): Boolean {
         return wishlist.value.contains(skinUuid)
+    }
+
+    fun getRecordedDates(): Flow<Set<String>> {
+        val puuid = authRepository.getPuuid() ?: return flowOf(emptySet())
+        return dailyStreakRepository.getRecordedDates(puuid)
+    }
+
+    suspend fun getStoreHistoryForDate(date: java.time.LocalDate): List<SkinItem>? {
+        val puuid = authRepository.getPuuid() ?: return null
+        return dailyStreakRepository.getStoreHistoryForDate(date, puuid)
     }
 
     override fun onCleared() {

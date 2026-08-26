@@ -29,4 +29,9 @@ object DatabaseModule {
     fun provideWishlistDao(database: ValoDatabase): WishlistDao {
         return database.wishlistDao()
     }
+
+    @Provides
+    fun provideStoreHistoryDao(database: ValoDatabase): com.example.valomobile.data.local.StoreHistoryDao {
+        return database.storeHistoryDao()
+    }
 }

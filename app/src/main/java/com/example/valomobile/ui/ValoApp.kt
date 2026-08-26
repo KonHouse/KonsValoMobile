@@ -16,7 +16,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -47,6 +49,11 @@ import com.example.valomobile.ui.screens.login.RiotLoginScreen
 import com.example.valomobile.ui.screens.login.RiotLoginViewModel
 import com.example.valomobile.ui.screens.settings.SettingsScreen
 import com.example.valomobile.ui.screens.settings.SettingsViewModel
+import com.example.valomobile.domain.model.DailyStreakInfo
+import com.example.valomobile.ui.components.DailyStreakCelebrationDialog
+import com.example.valomobile.ui.components.DailyStreakDetailDialog
+import com.example.valomobile.ui.components.StoreHistoryCalendarDialog
+import com.example.valomobile.ui.components.StreakChip
 import com.example.valomobile.ui.screens.store.*
 import java.text.NumberFormat
 import java.util.Locale
@@ -58,6 +65,11 @@ fun ValoApp() {
     val storeViewModel: StoreViewModel = hiltViewModel()
     val isLoggedIn = loginViewModel.isLoggedIn()
     val wallet by storeViewModel.wallet.collectAsState()
+    val streakInfo by storeViewModel.streakInfo.collectAsState()
+    val celebrationEvent by storeViewModel.celebrationEvent.collectAsState()
+    val recordedDates by storeViewModel.getRecordedDates().collectAsState(initial = emptySet())
+    var showStreakDetailDialog by remember { mutableStateOf(false) }
+    var showCalendarHistoryDialog by remember { mutableStateOf(false) }
     
     val backStack = rememberNavBackStack(
         if (isLoggedIn) ValoNavKey.StoreRotation as NavKey else ValoNavKey.Connect as NavKey
@@ -70,6 +82,7 @@ fun ValoApp() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 if (storeViewModel.isLoggedIn) {
+                    storeViewModel.checkDailyStreak()
                     storeViewModel.loadData(silent = true)
                 }
             }
@@ -87,6 +100,38 @@ fun ValoApp() {
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val useRail = showNavigation && adaptiveInfo.windowSizeClass.windowWidthSizeClass != WindowWidthSizeClass.COMPACT
 
+    // Daily Streak Celebration Dialog
+    celebrationEvent?.let { event ->
+        DailyStreakCelebrationDialog(
+            streak = event.currentStreak,
+            wasBroken = event.wasBroken,
+            onDismiss = { storeViewModel.dismissCelebration() }
+        )
+    }
+
+    // Daily Streak Detail Modal
+    if (showStreakDetailDialog) {
+        DailyStreakDetailDialog(
+            streakInfo = streakInfo,
+            onViewFullHistory = {
+                showStreakDetailDialog = false
+                showCalendarHistoryDialog = true
+            },
+            onDismiss = { showStreakDetailDialog = false }
+        )
+    }
+
+    // Full Store History Calendar Dialog
+    if (showCalendarHistoryDialog) {
+        StoreHistoryCalendarDialog(
+            recordedDates = recordedDates,
+            onLoadHistoryForDate = { date ->
+                storeViewModel.getStoreHistoryForDate(date)
+            },
+            onDismiss = { showCalendarHistoryDialog = false }
+        )
+    }
+
     Row(modifier = Modifier.fillMaxSize()) {
         if (useRail) {
             ValoNavigationRail(
@@ -99,7 +144,15 @@ fun ValoApp() {
             topBar = {
                 if (showTopBar) {
                     TopAppBar(
-                        title = { Text("ValoMobile", fontWeight = FontWeight.Black) },
+                        title = {
+                            if (showNavigation) {
+                                StreakChip(
+                                    streakCount = streakInfo.currentStreak,
+                                    onClick = { showStreakDetailDialog = true },
+                                    modifier = Modifier.padding(start = 2.dp)
+                                )
+                            }
+                        },
                         actions = {
                             if (showNavigation) {
                                 WalletBadgeBar(
