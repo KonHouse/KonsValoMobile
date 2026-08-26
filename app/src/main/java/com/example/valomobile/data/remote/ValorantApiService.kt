@@ -43,6 +43,16 @@ interface ValorantApiService {
         @Query("language") language: String = "en-US"
     ): ValorantApiResponse<List<ValorantBundleItem>>
 
+    @GET("v1/competitivetiers")
+    suspend fun getCompetitiveTiers(
+        @Query("language") language: String = "en-US"
+    ): ValorantApiResponse<List<ValorantCompetitiveTierEpisode>>
+
+    @GET("v1/maps")
+    suspend fun getMaps(
+        @Query("language") language: String = "en-US"
+    ): ValorantApiResponse<List<ValorantMap>>
+
     @GET("v1/version")
     suspend fun getVersion(): ValorantVersionResponse
 }

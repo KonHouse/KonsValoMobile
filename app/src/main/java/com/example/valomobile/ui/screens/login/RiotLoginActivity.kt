@@ -1,6 +1,7 @@
 package com.example.valomobile.ui.screens.login
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
@@ -25,6 +26,15 @@ class RiotLoginActivity : ComponentActivity() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pollingRunnable: Runnable? = null
     private var authTriggeredWithCookies = false
+
+    companion object {
+        const val EXTRA_ACCESS_TOKEN = "extra_access_token"
+        const val EXTRA_ID_TOKEN = "extra_id_token"
+        const val EXTRA_COOKIES = "extra_cookies"
+        const val RIOT_AUTH_URL =
+            "https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&response_type=token%20id_token&redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&scope=account%20openid&nonce=1"
+        private const val USER_AGENT = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    }
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,6 +109,8 @@ class RiotLoginActivity : ComponentActivity() {
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
+                databaseEnabled = true
+                userAgentString = USER_AGENT
                 allowFileAccess = false
                 allowContentAccess = false
                 setGeolocationEnabled(false)
@@ -114,6 +126,20 @@ class RiotLoginActivity : ComponentActivity() {
             val cookieManager = CookieManager.getInstance()
             cookieManager.setAcceptCookie(true)
             cookieManager.setAcceptThirdPartyCookies(this, true)
+
+            // Restore previously saved session cookies into CookieManager
+            val prefs = getSharedPreferences("riot_direct_auth_prefs", Context.MODE_PRIVATE)
+            val savedCookies = prefs.getString("session_cookies", null)
+            if (!savedCookies.isNullOrBlank()) {
+                val cookiePairs = savedCookies.split("; ")
+                for (pair in cookiePairs) {
+                    if (pair.isNotBlank()) {
+                        cookieManager.setCookie("https://auth.riotgames.com", pair)
+                        cookieManager.setCookie("https://riotgames.com", pair)
+                    }
+                }
+                cookieManager.flush()
+            }
 
             addJavascriptInterface(object {
                 @JavascriptInterface
@@ -138,7 +164,7 @@ class RiotLoginActivity : ComponentActivity() {
                 override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                     val url = request?.url?.toString() ?: ""
                     val host = request?.url?.host ?: ""
-                    
+
                     if (checkAndHandleUrl(url)) {
                         return true
                     }
@@ -262,10 +288,14 @@ class RiotLoginActivity : ComponentActivity() {
 
         setContentView(rootLayout)
 
-        startUrlPolling()
-    }
+        // Try fast background auto-login with restored cookies
+        fetchTokensWithCookies { success ->
+            if (success) {
+                Log.d("RiotLogin", "Fast cookie auto-login succeeded on activity launch!")
+            }
+        }
 
-    private fun startUrlPolling() {
+        // Active Polling Loop
         pollingRunnable = object : Runnable {
             override fun run() {
                 if (isHandled) return
@@ -305,7 +335,7 @@ class RiotLoginActivity : ComponentActivity() {
         val request = Request.Builder()
             .url(RIOT_AUTH_URL)
             .header("Cookie", cookies)
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36")
+            .header("User-Agent", USER_AGENT)
             .build()
 
         client.newCall(request).enqueue(object : Callback {
@@ -344,12 +374,12 @@ class RiotLoginActivity : ComponentActivity() {
             pollingRunnable?.let { mainHandler.removeCallbacks(it) }
             try {
                 webView.stopLoading()
-                android.webkit.CookieManager.getInstance().flush()
+                CookieManager.getInstance().flush()
             } catch (e: Exception) {
                 // ignore
             }
             val cookies = try {
-                android.webkit.CookieManager.getInstance().getCookie("https://auth.riotgames.com") ?: ""
+                CookieManager.getInstance().getCookie("https://auth.riotgames.com") ?: ""
             } catch (e: Exception) {
                 ""
             }
@@ -365,14 +395,5 @@ class RiotLoginActivity : ComponentActivity() {
             return true
         }
         return false
-    }
-
-    companion object {
-        const val EXTRA_ACCESS_TOKEN = "extra_access_token"
-        const val EXTRA_ID_TOKEN = "extra_id_token"
-        const val EXTRA_COOKIES = "extra_cookies"
-
-        private const val RIOT_AUTH_URL =
-            "https://auth.riotgames.com/authorize?client_id=play-valorant-web-prod&response_type=token%20id_token&redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&scope=account%20openid&nonce=1"
     }
 }

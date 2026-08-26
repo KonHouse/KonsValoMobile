@@ -92,4 +92,15 @@ object NetworkModule {
             .build()
             .create(BackendApiService::class.java)
     }
+
+    @Provides
+    @Singleton
+    fun provideRiotFriendsApiService(okHttpClient: OkHttpClient, gson: Gson): com.example.valomobile.data.remote.RiotFriendsApiService {
+        return Retrofit.Builder()
+            .baseUrl("https://pd.eu.a.pvp.net/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+            .create(com.example.valomobile.data.remote.RiotFriendsApiService::class.java)
+    }
 }

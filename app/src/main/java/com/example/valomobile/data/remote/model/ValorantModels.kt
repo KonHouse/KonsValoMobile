@@ -89,3 +89,30 @@ data class CatalogItemMeta(
     val price: Int,
     val tier: String
 )
+
+data class ValorantCompetitiveTierEpisode(
+    val uuid: String,
+    val assetObjectName: String?,
+    val tiers: List<ValorantTierEntry> = emptyList()
+)
+
+data class ValorantTierEntry(
+    val tier: Int,
+    val tierName: String,
+    val division: String?,
+    val divisionName: String?,
+    val color: String?,
+    val backgroundColor: String?,
+    val smallIcon: String?,
+    val largeIcon: String?,
+    val rankTriangle: String?
+)
+
+data class ValorantMap(
+    val uuid: String,
+    val displayName: String,
+    val mapUrl: String?,
+    val displayIcon: String?,
+    val splash: String?,
+    val listViewIcon: String?
+)

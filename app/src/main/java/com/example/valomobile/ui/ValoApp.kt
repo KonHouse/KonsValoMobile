@@ -49,6 +49,7 @@ import com.example.valomobile.ui.screens.login.RiotLoginScreen
 import com.example.valomobile.ui.screens.login.RiotLoginViewModel
 import com.example.valomobile.ui.screens.settings.SettingsScreen
 import com.example.valomobile.ui.screens.settings.SettingsViewModel
+import com.example.valomobile.ui.screens.friends.FriendsScreen
 import com.example.valomobile.domain.model.DailyStreakInfo
 import com.example.valomobile.ui.components.DailyStreakCelebrationDialog
 import com.example.valomobile.ui.components.DailyStreakDetailDialog
@@ -94,8 +95,8 @@ fun ValoApp() {
     }
     
     val currentKey = backStack.last()
-    val showNavigation = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings && currentKey !is ValoNavKey.VpCalculator
-    val showTopBar = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings && currentKey !is ValoNavKey.VpCalculator
+    val showNavigation = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings && currentKey !is ValoNavKey.VpCalculator && currentKey !is ValoNavKey.Friends
+    val showTopBar = currentKey !is ValoNavKey.Connect && currentKey !is ValoNavKey.Settings && currentKey !is ValoNavKey.VpCalculator && currentKey !is ValoNavKey.Friends
     
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val useRail = showNavigation && adaptiveInfo.windowSizeClass.windowWidthSizeClass != WindowWidthSizeClass.COMPACT
@@ -164,6 +165,9 @@ fun ValoApp() {
                                     },
                                     modifier = Modifier.padding(end = 4.dp)
                                 )
+                            }
+                            IconButton(onClick = { backStack.add(ValoNavKey.Friends) }) {
+                                Icon(Icons.Rounded.People, contentDescription = "Friends")
                             }
                             IconButton(onClick = { backStack.add(ValoNavKey.Settings) }) {
                                 Icon(Icons.Rounded.Settings, contentDescription = "Settings")
@@ -310,6 +314,12 @@ fun ValoApp() {
                                 }
                                 backStack.add(ValoNavKey.Connect)
                             },
+                            onBack = { backStack.removeLastOrNull() }
+                        )
+                    }
+
+                    entry<ValoNavKey.Friends> {
+                        FriendsScreen(
                             onBack = { backStack.removeLastOrNull() }
                         )
                     }

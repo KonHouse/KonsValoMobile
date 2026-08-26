@@ -1,13 +1,10 @@
 package com.example.valomobile.ui.screens.login
 
-import android.app.Activity
 import android.content.Intent
 import android.graphics.Color as AndroidColor
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.animation.*
@@ -49,19 +46,6 @@ fun RiotLoginScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showAutoredirectDialog by remember { mutableStateOf(false) }
-
-    val webViewLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val accessToken = result.data?.getStringExtra(RiotLoginActivity.EXTRA_ACCESS_TOKEN) ?: ""
-            val idToken = result.data?.getStringExtra(RiotLoginActivity.EXTRA_ID_TOKEN) ?: accessToken
-            val cookies = result.data?.getStringExtra(RiotLoginActivity.EXTRA_COOKIES)
-            if (accessToken.isNotBlank()) {
-                viewModel.loginWithTokens(accessToken, idToken, cookies)
-            }
-        }
-    }
 
     LaunchedEffect(uiState) {
         if (uiState is LoginState.Success) {
@@ -149,8 +133,20 @@ fun RiotLoginScreen(
                             )
                         )
                         .clickable(enabled = uiState !is LoginState.Loading) {
-                            val intent = Intent(context, RiotLoginActivity::class.java)
-                            webViewLauncher.launch(intent)
+                            try {
+                                val customTabsIntent = CustomTabsIntent.Builder()
+                                    .setShowTitle(true)
+                                    .setDefaultColorSchemeParams(
+                                        CustomTabColorSchemeParams.Builder()
+                                            .setToolbarColor(AndroidColor.parseColor("#0F1923"))
+                                            .build()
+                                    )
+                                    .build()
+                                customTabsIntent.launchUrl(context, Uri.parse(RIOT_AUTH_URL))
+                            } catch (e: Exception) {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(RIOT_AUTH_URL))
+                                context.startActivity(intent)
+                            }
                         },
                     contentAlignment = Alignment.Center
                 ) {

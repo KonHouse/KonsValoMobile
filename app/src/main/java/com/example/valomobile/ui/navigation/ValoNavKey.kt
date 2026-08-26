@@ -30,5 +30,8 @@ sealed interface ValoNavKey : NavKey {
     data object Settings : ValoNavKey
 
     @Serializable
+    data object Friends : ValoNavKey
+
+    @Serializable
     data class StoreDetail(val item: SkinItem) : ValoNavKey
 }
