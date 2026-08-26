@@ -22,6 +22,11 @@ ValoMobile is engineered from the ground up with a **Zero-Knowledge** and privac
 4. **Cryptographic Release Signing**:
    - The official release builds are signed using an RSA-2048 Keystore with **APK Signature Schemes v1, v2, v3, and v4**.
 
+5. **In-App Friends & Store Sharing Privacy (Firebase Firestore)**:
+   - Only **public in-game metadata** (weapon skin names, VP prices, and friend codes) is synchronized with Firebase Firestore.
+   - **Zero Token Leakage**: Riot authentication tokens, passwords, session cookies, and private personal identifiers are **never** transmitted to Firebase or stored in the cloud.
+   - Friend invitations and store views use non-sensitive, randomly generated **Friend Codes** (`VALO-XXXX`).
+
 ---
 
 ## 🔒 Reporting a Vulnerability

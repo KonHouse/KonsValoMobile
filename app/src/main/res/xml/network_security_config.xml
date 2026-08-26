@@ -13,6 +13,9 @@
         <domain includeSubdomains="true">playvalorant.com</domain>
         <domain includeSubdomains="true">pvp.net</domain>
         <domain includeSubdomains="true">valorant-api.com</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">firebaseio.com</domain>
+        <domain includeSubdomains="true">firebasestorage.app</domain>
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>
