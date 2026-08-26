@@ -8,6 +8,7 @@ import com.example.valomobile.data.remote.model.UserWallet
 import com.example.valomobile.data.repository.RiotAuthRepository
 import com.example.valomobile.data.repository.RiotStoreRepository
 import com.example.valomobile.data.repository.SkinCatalogRepository
+import com.example.valomobile.data.repository.CloudFriendsRepository
 import com.example.valomobile.domain.model.Bundle
 import com.example.valomobile.domain.model.SkinItem
 import com.example.valomobile.data.repository.DailyStreakRepository
@@ -30,7 +31,8 @@ class StoreViewModel @Inject constructor(
     private val authRepository: RiotAuthRepository,
     private val catalogRepository: SkinCatalogRepository,
     private val wishlistDao: WishlistDao,
-    private val dailyStreakRepository: DailyStreakRepository
+    private val dailyStreakRepository: DailyStreakRepository,
+    private val cloudFriendsRepository: CloudFriendsRepository
 ) : ViewModel() {
 
     companion object {
@@ -176,6 +178,14 @@ class StoreViewModel @Inject constructor(
                 val puuid = authRepository.getPuuid()
                 if (!puuid.isNullOrBlank() && newRotation.isNotEmpty()) {
                     dailyStreakRepository.saveTodayStore(newRotation, puuid)
+                    try {
+                        cloudFriendsRepository.syncUserProfileAndStore(
+                            skinOffers = newRotation,
+                            streakCount = streakInfo.value.currentStreak
+                        )
+                    } catch (e: Exception) {
+                        // ignore cloud sync error to keep store offline functional
+                    }
                 }
                 if (silent) {
                     _error.value = null

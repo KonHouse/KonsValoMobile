@@ -2,90 +2,155 @@ package com.example.valomobile.ui.screens.friends
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.valomobile.data.repository.RiotFriendsRepository
-import com.example.valomobile.domain.model.FriendsGrouped
+import com.example.valomobile.data.repository.CloudFriendsRepository
+import com.example.valomobile.domain.model.CloudUserProfile
+import com.example.valomobile.domain.model.FriendInvite
+import com.example.valomobile.domain.model.InAppFriendItem
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
 class FriendsViewModel @Inject constructor(
-    private val friendsRepository: RiotFriendsRepository
+    private val cloudFriendsRepository: CloudFriendsRepository
 ) : ViewModel() {
 
-    private val _friendsGrouped = MutableStateFlow(FriendsGrouped())
-    val friendsGrouped: StateFlow<FriendsGrouped> = _friendsGrouped.asStateFlow()
+    private val _myFriendCode = MutableStateFlow("VALO-....")
+    val myFriendCode: StateFlow<String> = _myFriendCode.asStateFlow()
+
+    val incomingInvites: StateFlow<List<FriendInvite>> = cloudFriendsRepository.observeIncomingInvites()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val friendsList: StateFlow<List<InAppFriendItem>> = cloudFriendsRepository.observeFriendsWithStores()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+    private val _inviteInput = MutableStateFlow("")
+    val inviteInput: StateFlow<String> = _inviteInput.asStateFlow()
 
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
+    private val _isSendingInvite = MutableStateFlow(false)
+    val isSendingInvite: StateFlow<Boolean> = _isSendingInvite.asStateFlow()
 
-    private var autoRefreshJob: Job? = null
+    private val _selectedFriendForStoreModal = MutableStateFlow<InAppFriendItem?>(null)
+    val selectedFriendForStoreModal: StateFlow<InAppFriendItem?> = _selectedFriendForStoreModal.asStateFlow()
 
-    val filteredFriends: StateFlow<FriendsGrouped> = combine(_friendsGrouped, _searchQuery) { grouped, query ->
+    private val _actionMessage = MutableStateFlow<String?>(null)
+    val actionMessage: StateFlow<String?> = _actionMessage.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    val filteredFriends: StateFlow<List<InAppFriendItem>> = combine(friendsList, searchQuery) { friends, query ->
         if (query.isBlank()) {
-            grouped
+            friends
         } else {
             val q = query.trim().lowercase()
-            FriendsGrouped(
-                inGame = grouped.inGame.filter { it.riotId.lowercase().contains(q) || it.rankName.lowercase().contains(q) },
-                online = grouped.online.filter { it.riotId.lowercase().contains(q) || it.rankName.lowercase().contains(q) },
-                offline = grouped.offline.filter { it.riotId.lowercase().contains(q) }
-            )
+            friends.filter {
+                it.riotId.lowercase().contains(q) ||
+                it.friendCode.lowercase().contains(q) ||
+                it.storeOffers.any { skin -> skin.displayName.lowercase().contains(q) }
+            }
         }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), FriendsGrouped())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
-        loadFriends(silent = false)
-        startPeriodicAutoRefresh()
+        loadMyFriendCode()
     }
 
-    fun onSearchQueryChange(query: String) {
-        _searchQuery.value = query
-    }
-
-    fun loadFriends(silent: Boolean = false) {
+    fun loadMyFriendCode() {
         viewModelScope.launch {
-            if (!silent) {
-                _isLoading.value = true
-                _error.value = null
-            }
             try {
-                val result = friendsRepository.getFriendsGrouped()
-                _friendsGrouped.value = result
-                if (silent) _error.value = null
+                val code = cloudFriendsRepository.getMyFriendCode()
+                _myFriendCode.value = code
             } catch (e: Exception) {
-                if (!silent) {
-                    _error.value = e.message ?: "Failed to load friends list"
-                }
+                // ignore
+            }
+        }
+    }
+
+    fun onSearchQueryChange(newQuery: String) {
+        _searchQuery.value = newQuery
+    }
+
+    fun onInviteInputChange(newInput: String) {
+        _inviteInput.value = newInput
+    }
+
+    fun sendInvite() {
+        val input = _inviteInput.value.trim()
+        if (input.isBlank()) {
+            _errorMessage.value = "Enter a Friend Code (e.g. VALO-1234) or Riot ID."
+            return
+        }
+
+        viewModelScope.launch {
+            _isSendingInvite.value = true
+            _errorMessage.value = null
+            _actionMessage.value = null
+            try {
+                val result = cloudFriendsRepository.sendFriendInvite(input)
+                result.fold(
+                    onSuccess = { msg ->
+                        _actionMessage.value = msg
+                        _inviteInput.value = ""
+                    },
+                    onFailure = { err ->
+                        _errorMessage.value = err.message ?: "Failed to send invite"
+                    }
+                )
+            } catch (e: Exception) {
+                _errorMessage.value = e.message ?: "Failed to send invite"
             } finally {
-                if (!silent) {
-                    _isLoading.value = false
+                _isSendingInvite.value = false
+            }
+        }
+    }
+
+    fun acceptInvite(invite: FriendInvite) {
+        viewModelScope.launch {
+            _errorMessage.value = null
+            val result = cloudFriendsRepository.acceptInvite(invite)
+            result.fold(
+                onSuccess = {
+                    _actionMessage.value = "You are now friends with ${invite.fromRiotId}!"
+                },
+                onFailure = { err ->
+                    _errorMessage.value = "Failed to accept: ${err.message}"
                 }
+            )
+        }
+    }
+
+    fun declineInvite(invite: FriendInvite) {
+        viewModelScope.launch {
+            cloudFriendsRepository.declineInvite(invite)
+            _actionMessage.value = "Invite declined."
+        }
+    }
+
+    fun removeFriend(friendPuuid: String) {
+        viewModelScope.launch {
+            cloudFriendsRepository.removeFriend(friendPuuid)
+            _actionMessage.value = "Friend removed."
+            if (_selectedFriendForStoreModal.value?.puuid == friendPuuid) {
+                _selectedFriendForStoreModal.value = null
             }
         }
     }
 
-    private fun startPeriodicAutoRefresh() {
-        autoRefreshJob?.cancel()
-        autoRefreshJob = viewModelScope.launch {
-            while (true) {
-                delay(25_000) // 25 seconds live presence polling
-                loadFriends(silent = true)
-            }
-        }
+    fun openFriendStoreModal(friend: InAppFriendItem) {
+        _selectedFriendForStoreModal.value = friend
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        autoRefreshJob?.cancel()
+    fun dismissFriendStoreModal() {
+        _selectedFriendForStoreModal.value = null
+    }
+
+    fun clearMessages() {
+        _actionMessage.value = null
+        _errorMessage.value = null
     }
 }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "590251031505",
+    "project_id": "valomobile-c5fea",
+    "storage_bucket": "valomobile-c5fea.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:590251031505:android:afdf6f1002015ee3803ef0",
+        "android_client_info": {
+          "package_name": "com.example.valomobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0LEM1iG6jWcV8Kl1ZGGEhKiInXWW4ZSs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
