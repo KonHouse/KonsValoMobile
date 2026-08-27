@@ -6,7 +6,7 @@
 [![Firebase](https://img.shields.io/badge/Firebase-Firestore%20Cloud-FFCA28.svg?logo=firebase)](https://firebase.google.com)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Security](https://img.shields.io/badge/Security-AES--256%20Hardware%20Encrypted-success.svg)](https://developer.android.com/topic/security/data)
-[![Version](https://img.shields.io/badge/Version-1.4.1-red.svg)](https://github.com/KonHouse/KonsValoMobile/releases)
+[![Version](https://img.shields.io/badge/Version-1.4.2-red.svg)](https://github.com/KonHouse/KonsValoMobile/releases)
 
 **ValoMobile** is a modern, standalone, and privacy-focused Android application designed for **Valorant** players to check their daily shop rotation, featured bundles, Night Market offers, daily streaks, store history, and share stores with friends directly from their mobile device.
 
@@ -14,7 +14,7 @@
 
 ## ✨ Features
 
-### 👥 In-App Friends & Live Store Sharing (v1.4.1)
+### 👥 In-App Friends & Live Store Sharing (v1.4.2)
 - **Unique Friend Code**: Each player gets a shareable code (e.g. `VALO-7X9K`) with 1-click copy and share to Discord/Messenger.
 - **Live Daily Store Sharing**: See what 4 skins your friends rolled in their daily shops today in real time via **Google Firebase Firestore**.
 - **Inspect Friend's Store**: Open detailed store preview dialogs to check friends' skin editions, prices, and weapon tiers.
@@ -39,8 +39,9 @@
 - **Real-Time Balances**: Live Valorant Points (VP) and Radianite Points (RP) balances displayed in the top bar.
 - **VP Pack Calculator**: Calculate exact real-money cost and optimal VP bundle combinations for your wishlist or shop items (supports EUR, PLN, USD, GBP, CAD, AUD, BRL).
 
-### ⭐ Wishlist & Background Notifications
+### ⭐ Wishlist & Daily Store Reminders
 - **Wishlist Tracking**: Mark favorite skins and receive timely background push notifications via Android **WorkManager** when they appear in your daily store.
+- **Configurable Daily Reminder**: Set a custom daily notification time (e.g. `18:00`) to check your fresh store rotation and keep your daily streak alive.
 
 ### 🚀 Automatic GitHub App Updates
 - **In-App Update Alerts**: Automatically queries GitHub Releases API on startup and notifies players when a new version is published.
