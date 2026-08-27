@@ -5,12 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.example.valomobile.data.local.WishlistDao
 import com.example.valomobile.data.local.WishlistEntity
 import com.example.valomobile.data.remote.model.UserWallet
+import com.example.valomobile.data.repository.AppUpdateRepository
 import com.example.valomobile.data.repository.RiotAuthRepository
 import com.example.valomobile.data.repository.RiotStoreRepository
 import com.example.valomobile.data.repository.SkinCatalogRepository
-import com.example.valomobile.data.repository.CloudFriendsRepository
+import com.example.valomobile.domain.model.AppUpdateInfo
 import com.example.valomobile.domain.model.Bundle
 import com.example.valomobile.domain.model.SkinItem
+import com.example.valomobile.data.repository.CloudFriendsRepository
 import com.example.valomobile.data.repository.DailyStreakRepository
 import com.example.valomobile.domain.model.DailyStreakInfo
 import com.example.valomobile.domain.model.StreakCheckInResult
@@ -32,7 +34,8 @@ class StoreViewModel @Inject constructor(
     private val catalogRepository: SkinCatalogRepository,
     private val wishlistDao: WishlistDao,
     private val dailyStreakRepository: DailyStreakRepository,
-    private val cloudFriendsRepository: CloudFriendsRepository
+    private val cloudFriendsRepository: CloudFriendsRepository,
+    private val appUpdateRepository: AppUpdateRepository
 ) : ViewModel() {
 
     companion object {
@@ -71,9 +74,15 @@ class StoreViewModel @Inject constructor(
         .map { items -> items.map { it.uuid }.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
+    private val _appUpdateInfo = MutableStateFlow<AppUpdateInfo?>(null)
+    val appUpdateInfo: StateFlow<AppUpdateInfo?> = _appUpdateInfo.asStateFlow()
+
     init {
         // Automatically check daily streak on startup
         checkDailyStreak()
+
+        // Check for new releases on GitHub
+        checkForAppUpdates()
 
         // Automatically reload store whenever user logs in or session updates
         viewModelScope.launch {
@@ -105,6 +114,26 @@ class StoreViewModel @Inject constructor(
 
     fun dismissCelebration() {
         _celebrationEvent.value = null
+    }
+
+    fun checkForAppUpdates() {
+        viewModelScope.launch {
+            try {
+                val result = appUpdateRepository.checkForUpdate()
+                result.getOrNull()?.let { update ->
+                    _appUpdateInfo.value = update
+                }
+            } catch (e: Exception) {
+                // ignore
+            }
+        }
+    }
+
+    fun dismissAppUpdate() {
+        _appUpdateInfo.value?.let { update ->
+            appUpdateRepository.dismissUpdate(update.latestVersion)
+        }
+        _appUpdateInfo.value = null
     }
 
     private fun startPeriodicAutoRefresh() {

@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.TextStyle
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
@@ -33,6 +35,20 @@ class DailyStreakRepository @Inject constructor(
     private val storeHistoryDao: StoreHistoryDao,
     private val gson: Gson
 ) {
+    companion object {
+        private const val PREFS_NAME = "daily_streak_prefs"
+        private const val KEY_CURRENT_STREAK = "current_streak"
+        private const val KEY_MAX_STREAK = "max_streak"
+        private const val KEY_LAST_LOGIN_DATE = "last_login_date"
+        private const val KEY_VISITED_DATES = "visited_dates_set"
+
+        /**
+         * Official Valorant store reset timezone.
+         * Riot Games resets the daily store worldwide at 00:00:00 UTC.
+         */
+        val VALORANT_STORE_ZONE: ZoneId = ZoneOffset.UTC
+    }
+
     private val prefs: SharedPreferences by lazy {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -40,15 +56,22 @@ class DailyStreakRepository @Inject constructor(
     private val _streakInfo = MutableStateFlow(DailyStreakInfo())
     val streakInfo: StateFlow<DailyStreakInfo> = _streakInfo.asStateFlow()
 
+    /**
+     * Gets the current date according to the Valorant store reset cycle (00:00 UTC).
+     */
+    fun getValorantStoreDate(): LocalDate {
+        return LocalDate.now(VALORANT_STORE_ZONE)
+    }
+
     private fun getPrefKey(base: String, puuid: String): String {
         return if (puuid.isNotBlank()) "${puuid}_$base" else base
     }
 
-    fun refreshStreakForAccount(puuid: String, today: LocalDate = LocalDate.now()) {
+    fun refreshStreakForAccount(puuid: String, today: LocalDate = getValorantStoreDate()) {
         _streakInfo.value = loadStreakInfo(today, puuid)
     }
 
-    fun recordDailyVisit(today: LocalDate = LocalDate.now(), puuid: String = ""): StreakCheckInResult {
+    fun recordDailyVisit(today: LocalDate = getValorantStoreDate(), puuid: String = ""): StreakCheckInResult {
         val todayStr = today.toString()
         val lastDateKey = getPrefKey(KEY_LAST_LOGIN_DATE, puuid)
         val currentStreakKey = getPrefKey(KEY_CURRENT_STREAK, puuid)
@@ -82,12 +105,12 @@ class DailyStreakRepository @Inject constructor(
 
                 when {
                     daysBetween == 1L -> {
-                        // Consecutive day visit
+                        // Consecutive day visit in Valorant store cycle
                         newStreak = currentStreak + 1
                         wasBroken = false
                     }
                     daysBetween > 1L -> {
-                        // Missed at least one day
+                        // Missed at least one Valorant store cycle
                         newStreak = 1
                         wasBroken = currentStreak > 0
                     }
@@ -123,7 +146,7 @@ class DailyStreakRepository @Inject constructor(
         )
     }
 
-    suspend fun saveTodayStore(skins: List<SkinItem>, puuid: String, date: LocalDate = LocalDate.now()) = withContext(Dispatchers.IO) {
+    suspend fun saveTodayStore(skins: List<SkinItem>, puuid: String, date: LocalDate = getValorantStoreDate()) = withContext(Dispatchers.IO) {
         if (skins.isEmpty() || puuid.isBlank()) return@withContext
         val dateStr = date.toString()
         val json = gson.toJson(skins)
@@ -153,11 +176,11 @@ class DailyStreakRepository @Inject constructor(
         return storeHistoryDao.getRecordedDates(puuid).map { it.toSet() }
     }
 
-    fun getStreakInfo(today: LocalDate = LocalDate.now(), puuid: String = ""): DailyStreakInfo {
+    fun getStreakInfo(today: LocalDate = getValorantStoreDate(), puuid: String = ""): DailyStreakInfo {
         return loadStreakInfo(today, puuid)
     }
 
-    private fun loadStreakInfo(today: LocalDate = LocalDate.now(), puuid: String = ""): DailyStreakInfo {
+    private fun loadStreakInfo(today: LocalDate = getValorantStoreDate(), puuid: String = ""): DailyStreakInfo {
         val todayStr = today.toString()
         val lastDateKey = getPrefKey(KEY_LAST_LOGIN_DATE, puuid)
         val currentStreakKey = getPrefKey(KEY_CURRENT_STREAK, puuid)
@@ -169,7 +192,7 @@ class DailyStreakRepository @Inject constructor(
         val lastDateStr = prefs.getString(lastDateKey, null)
         val visitedDates = prefs.getStringSet(visitedDatesKey, emptySet()) ?: emptySet()
 
-        // Check if streak was broken due to inactivity
+        // Check if streak was broken due to missing a store cycle
         val isCheckedInToday = lastDateStr == todayStr
         val effectiveStreak = if (lastDateStr != null && !isCheckedInToday) {
             try {
@@ -183,7 +206,7 @@ class DailyStreakRepository @Inject constructor(
             currentStreak
         }
 
-        // Build current week status (Mon -> Sun)
+        // Build current week status (Mon -> Sun) in Valorant store time
         val monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         val weekDays = mutableListOf<WeekDayStatus>()
 
@@ -210,13 +233,5 @@ class DailyStreakRepository @Inject constructor(
             isCheckedInToday = isCheckedInToday,
             weekDays = weekDays
         )
-    }
-
-    companion object {
-        private const val PREFS_NAME = "daily_streak_prefs"
-        private const val KEY_CURRENT_STREAK = "current_streak"
-        private const val KEY_MAX_STREAK = "max_streak"
-        private const val KEY_LAST_LOGIN_DATE = "last_login_date"
-        private const val KEY_VISITED_DATES = "visited_dates_set"
     }
 }

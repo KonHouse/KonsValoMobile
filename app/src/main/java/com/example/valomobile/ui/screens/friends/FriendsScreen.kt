@@ -412,20 +412,20 @@ private fun FriendCard(
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(76.dp)
+                                .height(66.dp)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(Color(0xFF0F151C))
                                 .border(
                                     width = 1.dp,
-                                    color = parseHexColor(skin.tierColor).copy(alpha = 0.4f),
+                                    color = parseHexColor(skin.tierColor).copy(alpha = 0.45f),
                                     shape = RoundedCornerShape(10.dp)
                                 )
-                                .padding(4.dp),
+                                .padding(horizontal = 4.dp, vertical = 6.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.SpaceBetween,
+                                verticalArrangement = Arrangement.Center,
                                 modifier = Modifier.fillMaxSize()
                             ) {
                                 AsyncImage(
@@ -437,22 +437,17 @@ private fun FriendCard(
                                     contentScale = ContentScale.Fit,
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(36.dp)
+                                        .height(38.dp)
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = skin.displayName,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = Color.White.copy(alpha = 0.9f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     textAlign = TextAlign.Center
-                                )
-                                Text(
-                                    text = "${skin.price} VP",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFFF4655)
                                 )
                             }
                         }

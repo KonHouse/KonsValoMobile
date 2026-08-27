@@ -16,6 +16,7 @@
         <domain includeSubdomains="true">googleapis.com</domain>
         <domain includeSubdomains="true">firebaseio.com</domain>
         <domain includeSubdomains="true">firebasestorage.app</domain>
+        <domain includeSubdomains="true">github.com</domain>
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

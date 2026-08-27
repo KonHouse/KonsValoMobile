@@ -42,6 +42,10 @@
 ### ⭐ Wishlist & Background Notifications
 - **Wishlist Tracking**: Mark favorite skins and receive timely background push notifications via Android **WorkManager** when they appear in your daily store.
 
+### 🚀 Automatic GitHub App Updates
+- **In-App Update Alerts**: Automatically queries GitHub Releases API on startup and notifies players when a new version is published.
+- **Direct APK Download**: 1-tap download of the latest release APK directly from GitHub with changelog preview and manual check button in Settings.
+
 ### 🔒 Zero-Knowledge Security & Privacy
 - **Direct Riot Connection**: Communicates directly with official Riot Games authentication servers (`auth.riotgames.com`) via official OAuth 2.0.
 - **Hardware-Backed AES-256 Encryption**: Tokens are stored securely using `EncryptedSharedPreferences` backed by the device's hardware security module (**Android KeyStore / TEE**).

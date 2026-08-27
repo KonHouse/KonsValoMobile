@@ -40,6 +40,11 @@ import androidx.window.core.layout.WindowWidthSizeClass
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.valomobile.data.remote.model.UserWallet
+import com.example.valomobile.ui.components.AppUpdateDialog
+import com.example.valomobile.ui.components.DailyStreakCelebrationDialog
+import com.example.valomobile.ui.components.DailyStreakDetailDialog
+import com.example.valomobile.ui.components.StoreHistoryCalendarDialog
+import com.example.valomobile.ui.components.StreakChip
 import com.example.valomobile.ui.navigation.ValoNavKey
 import com.example.valomobile.ui.screens.calculator.VpCalculatorScreen
 import com.example.valomobile.ui.screens.catalog.CatalogScreen
@@ -69,6 +74,7 @@ fun ValoApp() {
     val streakInfo by storeViewModel.streakInfo.collectAsState()
     val celebrationEvent by storeViewModel.celebrationEvent.collectAsState()
     val recordedDates by storeViewModel.getRecordedDates().collectAsState(initial = emptySet())
+    val appUpdateInfo by storeViewModel.appUpdateInfo.collectAsState()
     var showStreakDetailDialog by remember { mutableStateOf(false) }
     var showCalendarHistoryDialog by remember { mutableStateOf(false) }
     
@@ -100,6 +106,14 @@ fun ValoApp() {
     
     val adaptiveInfo = currentWindowAdaptiveInfo()
     val useRail = showNavigation && adaptiveInfo.windowSizeClass.windowWidthSizeClass != WindowWidthSizeClass.COMPACT
+
+    // App Update Available Dialog
+    appUpdateInfo?.let { update ->
+        AppUpdateDialog(
+            updateInfo = update,
+            onDismiss = { storeViewModel.dismissAppUpdate() }
+        )
+    }
 
     // Daily Streak Celebration Dialog
     celebrationEvent?.let { event ->

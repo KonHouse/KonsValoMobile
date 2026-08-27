@@ -43,6 +43,7 @@ import java.text.NumberFormat
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
@@ -451,12 +452,11 @@ fun StoreHistoryCalendarDialog(
     onLoadHistoryForDate: suspend (LocalDate) -> List<SkinItem>?,
     onDismiss: () -> Unit
 ) {
-    var currentMonth by remember { mutableStateOf(YearMonth.now()) }
-    var selectedDate by remember { mutableStateOf(LocalDate.now()) }
+    val today = remember { LocalDate.now(ZoneOffset.UTC) }
+    var currentMonth by remember { mutableStateOf(YearMonth.now(ZoneOffset.UTC)) }
+    var selectedDate by remember { mutableStateOf(LocalDate.now(ZoneOffset.UTC)) }
     var selectedDateSkins by remember { mutableStateOf<List<SkinItem>?>(null) }
     var isLoadingHistory by remember { mutableStateOf(false) }
-
-    val today = remember { LocalDate.now() }
 
     // Load initial store history for selectedDate
     LaunchedEffect(selectedDate) {
@@ -562,17 +562,17 @@ fun StoreHistoryCalendarDialog(
 
                             IconButton(
                                 onClick = {
-                                    if (currentMonth.isBefore(YearMonth.now())) {
+                                    if (currentMonth.isBefore(YearMonth.now(ZoneOffset.UTC))) {
                                         currentMonth = currentMonth.plusMonths(1)
                                     }
                                 },
-                                enabled = currentMonth.isBefore(YearMonth.now()),
+                                enabled = currentMonth.isBefore(YearMonth.now(ZoneOffset.UTC)),
                                 modifier = Modifier.size(32.dp)
                             ) {
                                 Icon(
                                     Icons.Rounded.ChevronRight,
                                     contentDescription = "Next Month",
-                                    tint = if (currentMonth.isBefore(YearMonth.now())) Color.White else Color.Gray.copy(alpha = 0.3f)
+                                    tint = if (currentMonth.isBefore(YearMonth.now(ZoneOffset.UTC))) Color.White else Color.Gray.copy(alpha = 0.3f)
                                 )
                             }
                         }

@@ -103,4 +103,15 @@ object NetworkModule {
             .build()
             .create(com.example.valomobile.data.remote.RiotFriendsApiService::class.java)
     }
+
+    @Provides
+    @Singleton
+    fun provideGitHubApiService(okHttpClient: OkHttpClient, gson: Gson): com.example.valomobile.data.remote.GitHubApiService {
+        return Retrofit.Builder()
+            .baseUrl("https://api.github.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create(gson))
+            .build()
+            .create(com.example.valomobile.data.remote.GitHubApiService::class.java)
+    }
 }

@@ -223,7 +223,31 @@ class RiotAuthRepository @Inject constructor(
         val puuid = userInfo.sub
         val gameName = userInfo.acct?.gameName ?: userInfo.preferredUsername ?: "Valorant"
         val tagLine = userInfo.acct?.tagLine ?: "EU"
-        val region = "eu"
+
+        // 2.5 Automatically detect player's true live server region (EU, NA, AP, KR, BR, LATAM)
+        var region = "eu"
+        try {
+            val pasRes = authApiService.getPasRegion(
+                url = "https://riot-geo.pas.si.riotgames.com/pas/v1/product/valorant",
+                bearerToken = "Bearer $accessToken",
+                body = mapOf("id_token" to idToken)
+            )
+            if (pasRes.isSuccessful) {
+                val jsonBody = pasRes.body()?.string()
+                if (!jsonBody.isNullOrBlank()) {
+                    val jsonObj = org.json.JSONObject(jsonBody)
+                    val affinities = jsonObj.optJSONObject("affinities")
+                    val liveShard = affinities?.optString("live")?.lowercase()
+                    if (!liveShard.isNullOrBlank()) {
+                        region = liveShard
+                        Log.d(TAG, "Successfully detected live Riot shard: $region")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "PAS geo detection failed, attempting JWT decode fallback", e)
+            region = extractRegionFromIdToken(idToken)
+        }
 
         // 3. Fetch latest client version
         var clientVersion = "release-13.02-shipping-17-5277781"
@@ -444,6 +468,29 @@ class RiotAuthRepository @Inject constructor(
         }
         sharedPreferences.edit().clear().apply()
         _sessionState.value = false
+    }
+
+    private fun extractRegionFromIdToken(idToken: String): String {
+        try {
+            val parts = idToken.split(".")
+            if (parts.size >= 2) {
+                val payloadJson = String(java.util.Base64.getUrlDecoder().decode(parts[1]))
+                val jsonObj = org.json.JSONObject(payloadJson)
+                val dat = jsonObj.optJSONObject("dat")
+                val r = dat?.optString("r")?.lowercase()
+                if (!r.isNullOrBlank()) {
+                    return when (r) {
+                        "na", "latam", "br" -> "na"
+                        "ap" -> "ap"
+                        "kr" -> "kr"
+                        else -> "eu"
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to decode JWT payload for region fallback", e)
+        }
+        return "eu"
     }
 
     companion object {

@@ -45,4 +45,11 @@ interface RiotAuthApiService {
         @Url url: String,
         @Header("Authorization") bearerToken: String
     ): RiotUserInfoResponse
+
+    @PUT
+    suspend fun getPasRegion(
+        @Url url: String = "https://riot-geo.pas.si.riotgames.com/pas/v1/product/valorant",
+        @Header("Authorization") bearerToken: String,
+        @Body body: Map<String, String>
+    ): Response<okhttp3.ResponseBody>
 }
