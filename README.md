@@ -6,7 +6,7 @@
 [![Firebase](https://img.shields.io/badge/Firebase-Firestore%20Cloud-FFCA28.svg?logo=firebase)](https://firebase.google.com)
 [![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Security](https://img.shields.io/badge/Security-AES--256%20Hardware%20Encrypted-success.svg)](https://developer.android.com/topic/security/data)
-[![Version](https://img.shields.io/badge/Version-1.4.0-red.svg)](https://github.com/KonHouse/KonsValoMobile/releases)
+[![Version](https://img.shields.io/badge/Version-1.4.1-red.svg)](https://github.com/KonHouse/KonsValoMobile/releases)
 
 **ValoMobile** is a modern, standalone, and privacy-focused Android application designed for **Valorant** players to check their daily shop rotation, featured bundles, Night Market offers, daily streaks, store history, and share stores with friends directly from their mobile device.
 
@@ -14,7 +14,7 @@
 
 ## ✨ Features
 
-### 👥 In-App Friends & Live Store Sharing (v1.4.0)
+### 👥 In-App Friends & Live Store Sharing (v1.4.1)
 - **Unique Friend Code**: Each player gets a shareable code (e.g. `VALO-7X9K`) with 1-click copy and share to Discord/Messenger.
 - **Live Daily Store Sharing**: See what 4 skins your friends rolled in their daily shops today in real time via **Google Firebase Firestore**.
 - **Inspect Friend's Store**: Open detailed store preview dialogs to check friends' skin editions, prices, and weapon tiers.

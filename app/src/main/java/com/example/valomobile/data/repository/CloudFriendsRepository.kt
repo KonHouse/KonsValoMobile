@@ -9,14 +9,15 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.SetOptions
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
 import java.security.SecureRandom
 import javax.inject.Inject
 import javax.inject.Singleton
 
+@OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class CloudFriendsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -41,58 +42,61 @@ class CloudFriendsRepository @Inject constructor(
         try {
             if (auth.currentUser == null) {
                 auth.signInAnonymously().await()
-                Log.d(TAG, "Firebase anonymous sign-in successful: ${auth.currentUser?.uid}")
+                Log.d(TAG, "Firebase auth initialized: ${auth.currentUser?.uid}")
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Firebase anonymous auth warning: ${e.message}")
+            Log.w(TAG, "Firebase auth info: ${e.message}")
         }
     }
 
     suspend fun getMyFriendCode(): String {
         ensureFirebaseAuth()
         val puuid = authRepository.getPuuid() ?: return "VALO-0000"
-        val cachedCode = prefs.getString("${puuid}_friend_code", null)
-        if (!cachedCode.isNullOrBlank()) {
-            return cachedCode
-        }
-
-        // Check Firestore users collection
-        try {
-            val userDoc = firestore.collection(COLLECTION_USERS).document(puuid).get().await()
-            val existingCode = userDoc.getString("friendCode")
-            if (!existingCode.isNullOrBlank()) {
-                prefs.edit().putString("${puuid}_friend_code", existingCode).apply()
-                return existingCode
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error fetching friendCode from Firestore", e)
-        }
-
-        // Generate new unique code e.g. VALO-7X9K
-        val newCode = generateRandomCode()
         val riotName = authRepository.getGameName() ?: "Player"
         val riotTag = authRepository.getTagLine() ?: "EU"
         val riotId = "$riotName#$riotTag"
 
+        var code = prefs.getString("${puuid}_friend_code", null)
+
+        // If not cached, check Firestore
+        if (code.isNullOrBlank()) {
+            try {
+                val userDoc = firestore.collection(COLLECTION_USERS).document(puuid).get().await()
+                val existingCode = userDoc.getString("friendCode")
+                if (!existingCode.isNullOrBlank()) {
+                    code = existingCode
+                    prefs.edit().putString("${puuid}_friend_code", code).apply()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error checking user document for friend code", e)
+            }
+        }
+
+        // If still null, generate a new unique code
+        if (code.isNullOrBlank()) {
+            code = generateRandomCode()
+            prefs.edit().putString("${puuid}_friend_code", code).apply()
+        }
+
+        // Always ensure both documents are registered in Firestore
         try {
             val codeData = mapOf(
                 "puuid" to puuid,
+                "friendCode" to code,
                 "riotId" to riotId,
-                "createdAt" to System.currentTimeMillis()
+                "updatedAt" to System.currentTimeMillis()
             )
-            firestore.collection(COLLECTION_FRIEND_CODES).document(newCode).set(codeData).await()
-
+            firestore.collection(COLLECTION_FRIEND_CODES).document(code).set(codeData, SetOptions.merge()).await()
             firestore.collection(COLLECTION_USERS).document(puuid).set(
-                mapOf("friendCode" to newCode),
+                mapOf("puuid" to puuid, "friendCode" to code, "riotId" to riotId),
                 SetOptions.merge()
             ).await()
-
-            prefs.edit().putString("${puuid}_friend_code", newCode).apply()
-            return newCode
+            Log.d(TAG, "Friend code registered in Firestore: $code for $riotId ($puuid)")
         } catch (e: Exception) {
-            Log.e(TAG, "Error saving new friend code", e)
-            return newCode
+            Log.e(TAG, "Failed to register friend code in Firestore", e)
         }
+
+        return code
     }
 
     private fun generateRandomCode(): String {
@@ -136,12 +140,11 @@ class CloudFriendsRepository @Inject constructor(
 
         try {
             firestore.collection(COLLECTION_USERS).document(puuid).set(profileData, SetOptions.merge()).await()
-            // Also ensure friend_codes mapping is current
             firestore.collection(COLLECTION_FRIEND_CODES).document(friendCode).set(
-                mapOf("puuid" to puuid, "riotId" to riotId),
+                mapOf("puuid" to puuid, "riotId" to riotId, "friendCode" to friendCode),
                 SetOptions.merge()
             ).await()
-            Log.d(TAG, "Successfully synced user store to Firebase Firestore")
+            Log.d(TAG, "Successfully synced user store to Firebase Firestore for $riotId")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to sync profile to Firestore", e)
         }
@@ -163,10 +166,14 @@ class CloudFriendsRepository @Inject constructor(
         var targetPuuid: String? = null
         var targetRiotId: String? = null
 
-        // 1. Try search by Friend Code (e.g. VALO-XXXX or XXXX)
+        // 1. Try search by Friend Code (with or without 'VALO-')
         val formattedCode = if (query.startsWith("VALO-", ignoreCase = true)) query.uppercase() else "VALO-${query.uppercase()}"
         try {
-            val codeDoc = firestore.collection(COLLECTION_FRIEND_CODES).document(formattedCode).get().await()
+            var codeDoc = firestore.collection(COLLECTION_FRIEND_CODES).document(formattedCode).get().await()
+            if (!codeDoc.exists() && !query.startsWith("VALO-", ignoreCase = true)) {
+                // Also check if raw query exists as document ID
+                codeDoc = firestore.collection(COLLECTION_FRIEND_CODES).document(query.uppercase()).get().await()
+            }
             if (codeDoc.exists()) {
                 targetPuuid = codeDoc.getString("puuid")
                 targetRiotId = codeDoc.getString("riotId")
@@ -175,7 +182,25 @@ class CloudFriendsRepository @Inject constructor(
             Log.w(TAG, "Error looking up friend code: $formattedCode", e)
         }
 
-        // 2. Try search by exact Riot ID (e.g. Konrad#EUNE)
+        // 2. Fallback: Search in users collection by friendCode field
+        if (targetPuuid == null) {
+            try {
+                val userCodeQuery = firestore.collection(COLLECTION_USERS)
+                    .whereEqualTo("friendCode", formattedCode)
+                    .limit(1)
+                    .get()
+                    .await()
+                if (!userCodeQuery.isEmpty) {
+                    val doc = userCodeQuery.documents.first()
+                    targetPuuid = doc.getString("puuid") ?: doc.id
+                    targetRiotId = doc.getString("riotId")
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Error searching users by friendCode: $formattedCode", e)
+            }
+        }
+
+        // 3. Search by exact Riot ID (e.g. Konrad#EUNE)
         if (targetPuuid == null && query.contains("#")) {
             try {
                 val userQuery = firestore.collection(COLLECTION_USERS)
@@ -185,7 +210,7 @@ class CloudFriendsRepository @Inject constructor(
                     .await()
                 if (!userQuery.isEmpty) {
                     val doc = userQuery.documents.first()
-                    targetPuuid = doc.getString("puuid")
+                    targetPuuid = doc.getString("puuid") ?: doc.id
                     targetRiotId = doc.getString("riotId")
                 }
             } catch (e: Exception) {
@@ -194,7 +219,7 @@ class CloudFriendsRepository @Inject constructor(
         }
 
         if (targetPuuid.isNullOrBlank()) {
-            return Result.failure(Exception("Player not found with code '$query'. Check the code and try again."))
+            return Result.failure(Exception("Player not found with '$query'. Make sure your friend has opened the ValoMobile Friends tab to register their code!"))
         }
 
         if (targetPuuid == myPuuid) {
@@ -202,15 +227,19 @@ class CloudFriendsRepository @Inject constructor(
         }
 
         // Check if already friends
-        val friendDoc = firestore.collection(COLLECTION_USERS)
-            .document(myPuuid)
-            .collection(SUBCOLLECTION_FRIENDS)
-            .document(targetPuuid)
-            .get()
-            .await()
+        try {
+            val friendDoc = firestore.collection(COLLECTION_USERS)
+                .document(myPuuid)
+                .collection(SUBCOLLECTION_FRIENDS)
+                .document(targetPuuid)
+                .get()
+                .await()
 
-        if (friendDoc.exists()) {
-            return Result.failure(Exception("You are already friends with ${targetRiotId ?: query}!"))
+            if (friendDoc.exists()) {
+                return Result.failure(Exception("You are already friends with ${targetRiotId ?: query}!"))
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Error checking existing friendship", e)
         }
 
         // Create invite document
@@ -228,55 +257,57 @@ class CloudFriendsRepository @Inject constructor(
 
         try {
             firestore.collection(COLLECTION_INVITES).document(inviteId).set(inviteData, SetOptions.merge()).await()
+            Log.d(TAG, "Invite successfully written to Firestore: $inviteId (from $myRiotId to $targetRiotId)")
             return Result.success("Invite sent to ${targetRiotId ?: formattedCode}!")
         } catch (e: Exception) {
+            Log.e(TAG, "Error writing invite to Firestore", e)
             return Result.failure(Exception("Failed to send invite: ${e.message}"))
         }
     }
 
-    fun observeIncomingInvites(): Flow<List<FriendInvite>> = callbackFlow {
-        ensureFirebaseAuth()
-        val myPuuid = authRepository.getPuuid() ?: ""
-        if (myPuuid.isBlank()) {
-            trySend(emptyList())
-            close()
-            return@callbackFlow
-        }
+    fun observeIncomingInvites(): Flow<List<FriendInvite>> = authRepository.sessionState.flatMapLatest { loggedIn ->
+        if (!loggedIn) {
+            flowOf(emptyList())
+        } else {
+            callbackFlow {
+                val myPuuid = authRepository.getPuuid() ?: ""
+                if (myPuuid.isBlank()) {
+                    trySend(emptyList())
+                    awaitClose { }
+                } else {
+                    val listener = firestore.collection(COLLECTION_INVITES)
+                        .whereEqualTo("toPuuid", myPuuid)
+                        .addSnapshotListener { snapshot, error ->
+                            if (error != null) {
+                                Log.e(TAG, "Error observing incoming invites: ${error.message}", error)
+                                return@addSnapshotListener
+                            }
+                            val invites = snapshot?.documents?.mapNotNull { doc ->
+                                try {
+                                    FriendInvite(
+                                        id = doc.getString("id") ?: doc.id,
+                                        fromPuuid = doc.getString("fromPuuid") ?: "",
+                                        fromRiotId = doc.getString("fromRiotId") ?: "Player",
+                                        fromFriendCode = doc.getString("fromFriendCode") ?: "",
+                                        toPuuid = doc.getString("toPuuid") ?: "",
+                                        toRiotId = doc.getString("toRiotId") ?: "",
+                                        status = doc.getString("status") ?: InviteStatus.PENDING.name,
+                                        createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
+                                    )
+                                } catch (e: Exception) {
+                                    null
+                                }
+                            }?.filter { it.status == InviteStatus.PENDING.name } ?: emptyList()
 
-        var listener: ListenerRegistration? = null
-        try {
-            listener = firestore.collection(COLLECTION_INVITES)
-                .whereEqualTo("toPuuid", myPuuid)
-                .whereEqualTo("status", InviteStatus.PENDING.name)
-                .addSnapshotListener { snapshot, error ->
-                    if (error != null) {
-                        Log.w(TAG, "Error observing invites", error)
-                        return@addSnapshotListener
-                    }
-                    val invites = snapshot?.documents?.mapNotNull { doc ->
-                        try {
-                            FriendInvite(
-                                id = doc.getString("id") ?: doc.id,
-                                fromPuuid = doc.getString("fromPuuid") ?: "",
-                                fromRiotId = doc.getString("fromRiotId") ?: "Player",
-                                fromFriendCode = doc.getString("fromFriendCode") ?: "",
-                                toPuuid = doc.getString("toPuuid") ?: "",
-                                toRiotId = doc.getString("toRiotId") ?: "",
-                                status = doc.getString("status") ?: InviteStatus.PENDING.name,
-                                createdAt = doc.getLong("createdAt") ?: System.currentTimeMillis()
-                            )
-                        } catch (e: Exception) {
-                            null
+                            Log.d(TAG, "Observed ${invites.size} pending incoming invites for $myPuuid")
+                            trySend(invites)
                         }
-                    } ?: emptyList()
-                    trySend(invites)
-                }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to attach invites listener", e)
-        }
 
-        awaitClose {
-            listener?.remove()
+                    awaitClose {
+                        listener.remove()
+                    }
+                }
+            }
         }
     }
 
@@ -290,7 +321,7 @@ class CloudFriendsRepository @Inject constructor(
             val inviteRef = firestore.collection(COLLECTION_INVITES).document(invite.id)
             batch.update(inviteRef, "status", InviteStatus.ACCEPTED.name)
 
-            // 2. Add to both friends lists
+            // 2. Add to both friends subcollections
             val myFriendRef = firestore.collection(COLLECTION_USERS)
                 .document(myPuuid)
                 .collection(SUBCOLLECTION_FRIENDS)
@@ -304,8 +335,10 @@ class CloudFriendsRepository @Inject constructor(
             batch.set(theirFriendRef, mapOf("puuid" to myPuuid, "addedAt" to System.currentTimeMillis()))
 
             batch.commit().await()
+            Log.d(TAG, "Invite accepted and mutual friendship established: ${invite.fromRiotId} <-> $myPuuid")
             return Result.success(Unit)
         } catch (e: Exception) {
+            Log.e(TAG, "Failed to accept invite", e)
             return Result.failure(e)
         }
     }
@@ -344,92 +377,89 @@ class CloudFriendsRepository @Inject constructor(
         }
     }
 
-    fun observeFriendsWithStores(): Flow<List<InAppFriendItem>> = callbackFlow {
-        ensureFirebaseAuth()
-        val myPuuid = authRepository.getPuuid() ?: ""
-        if (myPuuid.isBlank()) {
-            trySend(emptyList())
-            close()
-            return@callbackFlow
-        }
-
-        var friendListener: ListenerRegistration? = null
-        var userProfilesListener: ListenerRegistration? = null
-
-        try {
-            friendListener = firestore.collection(COLLECTION_USERS)
-                .document(myPuuid)
-                .collection(SUBCOLLECTION_FRIENDS)
-                .addSnapshotListener { friendSnapshot, error ->
-                    if (error != null) {
-                        Log.w(TAG, "Error observing friends list", error)
-                        return@addSnapshotListener
-                    }
-                    val friendPuuids = friendSnapshot?.documents?.map { it.id } ?: emptyList()
-                    if (friendPuuids.isEmpty()) {
-                        trySend(emptyList())
-                        userProfilesListener?.remove()
-                        return@addSnapshotListener
-                    }
-
-                    userProfilesListener?.remove()
-                    // Fetch up to 30 friends from users collection
-                    userProfilesListener = firestore.collection(COLLECTION_USERS)
-                        .whereIn("puuid", friendPuuids.take(30))
-                        .addSnapshotListener { usersSnapshot, usersError ->
-                            if (usersError != null) {
-                                Log.w(TAG, "Error observing friend profiles", usersError)
+    fun observeFriendsWithStores(): Flow<List<InAppFriendItem>> = authRepository.sessionState.flatMapLatest { loggedIn ->
+        if (!loggedIn) {
+            flowOf(emptyList())
+        } else {
+            callbackFlow {
+                val myPuuid = authRepository.getPuuid() ?: ""
+                if (myPuuid.isBlank()) {
+                    trySend(emptyList())
+                    awaitClose { }
+                } else {
+                    var userProfilesListener: ListenerRegistration? = null
+                    val friendListener = firestore.collection(COLLECTION_USERS)
+                        .document(myPuuid)
+                        .collection(SUBCOLLECTION_FRIENDS)
+                        .addSnapshotListener { friendSnapshot, error ->
+                            if (error != null) {
+                                Log.e(TAG, "Error observing friends list: ${error.message}", error)
                                 return@addSnapshotListener
                             }
-                            val items = usersSnapshot?.documents?.mapNotNull { doc ->
-                                try {
-                                    val puuid = doc.getString("puuid") ?: doc.id
-                                    val friendCode = doc.getString("friendCode") ?: ""
-                                    val riotId = doc.getString("riotId") ?: "Valorant Player"
-                                    val region = doc.getString("region") ?: "eu"
-                                    val currentStreak = doc.getLong("currentStreak")?.toInt() ?: 0
-                                    val lastUpdated = doc.getLong("lastUpdated") ?: 0L
+                            val friendPuuids = friendSnapshot?.documents?.map { it.id } ?: emptyList()
+                            if (friendPuuids.isEmpty()) {
+                                trySend(emptyList())
+                                userProfilesListener?.remove()
+                                return@addSnapshotListener
+                            }
 
-                                    val rawOffers = doc.get("storeOffers") as? List<Map<String, Any?>> ?: emptyList()
-                                    val offers = rawOffers.map { raw ->
-                                        CloudStoreSkinOffer(
-                                            uuid = raw["uuid"] as? String ?: "",
-                                            displayName = raw["displayName"] as? String ?: "Skin",
-                                            displayIcon = raw["displayIcon"] as? String,
-                                            price = (raw["price"] as? Long)?.toInt() ?: ((raw["price"] as? Int) ?: 0),
-                                            tierColor = raw["tierColor"] as? String ?: "#FFFFFF",
-                                            tierIcon = raw["tierIcon"] as? String
-                                        )
+                            userProfilesListener?.remove()
+                            userProfilesListener = firestore.collection(COLLECTION_USERS)
+                                .whereIn("puuid", friendPuuids.take(30))
+                                .addSnapshotListener { usersSnapshot, usersError ->
+                                    if (usersError != null) {
+                                        Log.e(TAG, "Error observing friend profiles: ${usersError.message}", usersError)
+                                        return@addSnapshotListener
                                     }
+                                    val items = usersSnapshot?.documents?.mapNotNull { doc ->
+                                        try {
+                                            val puuid = doc.getString("puuid") ?: doc.id
+                                            val friendCode = doc.getString("friendCode") ?: ""
+                                            val riotId = doc.getString("riotId") ?: "Valorant Player"
+                                            val region = doc.getString("region") ?: "eu"
+                                            val currentStreak = doc.getLong("currentStreak")?.toInt() ?: 0
+                                            val lastUpdated = doc.getLong("lastUpdated") ?: 0L
 
-                                    val isRecent = System.currentTimeMillis() - lastUpdated < 15 * 60 * 1000L
+                                            val rawOffers = doc.get("storeOffers") as? List<Map<String, Any?>> ?: emptyList()
+                                            val offers = rawOffers.map { raw ->
+                                                CloudStoreSkinOffer(
+                                                    uuid = raw["uuid"] as? String ?: "",
+                                                    displayName = raw["displayName"] as? String ?: "Skin",
+                                                    displayIcon = raw["displayIcon"] as? String,
+                                                    price = (raw["price"] as? Long)?.toInt() ?: ((raw["price"] as? Int) ?: 0),
+                                                    tierColor = raw["tierColor"] as? String ?: "#FFFFFF",
+                                                    tierIcon = raw["tierIcon"] as? String
+                                                )
+                                            }
 
-                                    InAppFriendItem(
-                                        puuid = puuid,
-                                        friendCode = friendCode,
-                                        riotId = riotId,
-                                        region = region,
-                                        accountLevel = 0,
-                                        currentStreak = currentStreak,
-                                        storeOffers = offers,
-                                        lastUpdated = lastUpdated,
-                                        isOnlineRecently = isRecent
-                                    )
-                                } catch (e: Exception) {
-                                    null
+                                            val isRecent = System.currentTimeMillis() - lastUpdated < 15 * 60 * 1000L
+
+                                            InAppFriendItem(
+                                                puuid = puuid,
+                                                friendCode = friendCode,
+                                                riotId = riotId,
+                                                region = region,
+                                                accountLevel = 0,
+                                                currentStreak = currentStreak,
+                                                storeOffers = offers,
+                                                lastUpdated = lastUpdated,
+                                                isOnlineRecently = isRecent
+                                            )
+                                        } catch (e: Exception) {
+                                            null
+                                        }
+                                    } ?: emptyList()
+
+                                    trySend(items.sortedByDescending { it.lastUpdated })
                                 }
-                            } ?: emptyList()
-
-                            trySend(items.sortedByDescending { it.lastUpdated })
                         }
-                }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to observe friends", e)
-        }
 
-        awaitClose {
-            friendListener?.remove()
-            userProfilesListener?.remove()
+                    awaitClose {
+                        friendListener.remove()
+                        userProfilesListener?.remove()
+                    }
+                }
+            }
         }
     }
 }
