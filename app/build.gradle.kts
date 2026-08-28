@@ -28,8 +28,8 @@ android {
         applicationId = "com.example.valomobile"
         minSdk = 24
         targetSdk = 37
-        versionCode = 10
-        versionName = "1.4.2"
+        versionCode = 11
+        versionName = "1.4.3"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "VALORANT_API_KEY", "\"$valorantApiKey\"")
