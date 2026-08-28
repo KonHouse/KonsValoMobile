@@ -388,13 +388,13 @@ private fun FriendCard(
                 // Sync time badge
                 Surface(
                     shape = RoundedCornerShape(6.dp),
-                    color = if (friend.storeOffers.isNotEmpty()) Color(0xFF162E20) else Color(0xFF2A2A2A)
+                    color = if (friend.isSyncedToday) Color(0xFF162E20) else Color(0xFF2B2014)
                 ) {
                     Text(
-                        text = if (friend.storeOffers.isNotEmpty()) "Store Synced" else "No Offers Yet",
+                        text = if (friend.isSyncedToday) "Store Synced" else "Not Synced Today",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (friend.storeOffers.isNotEmpty()) Color(0xFF81C784) else Color.White.copy(alpha = 0.4f),
+                        color = if (friend.isSyncedToday) Color(0xFF81C784) else Color(0xFFFFB74D),
                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
@@ -402,8 +402,8 @@ private fun FriendCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 4 Daily Skin Offers Row
-            if (friend.storeOffers.isNotEmpty()) {
+            // 4 Daily Skin Offers Row or Not Synced Placeholder
+            if (friend.isSyncedToday) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -451,6 +451,35 @@ private fun FriendCard(
                                 )
                             }
                         }
+                    }
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF0F151C),
+                    border = BorderStroke(1.dp, Color(0xFF223040).copy(alpha = 0.6f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 12.dp, horizontal = 12.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Schedule,
+                            contentDescription = null,
+                            tint = Color(0xFFFFB74D).copy(alpha = 0.8f),
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(7.dp))
+                        Text(
+                            text = "Hasn't opened ValoMobile today yet",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.65f)
+                        )
                     }
                 }
             }
@@ -696,12 +725,35 @@ private fun FriendStoreDetailDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (friend.storeOffers.isEmpty()) {
-                    Text(
-                        text = "This friend hasn't opened their ValoMobile store yet today.",
-                        fontSize = 13.sp,
-                        color = Color.White.copy(alpha = 0.6f)
-                    )
+                if (!friend.isSyncedToday) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp, horizontal = 8.dp)
+                    ) {
+                        Icon(
+                            Icons.Rounded.Schedule,
+                            contentDescription = null,
+                            tint = Color(0xFFFFB74D),
+                            modifier = Modifier.size(38.dp)
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = "Not Synced for Today",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Color.White
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "${friend.riotId} hasn't checked their store in ValoMobile yet since the daily server reset (00:00 UTC).",
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.6f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 } else {
                     friend.storeOffers.forEach { skin ->
                         Surface(

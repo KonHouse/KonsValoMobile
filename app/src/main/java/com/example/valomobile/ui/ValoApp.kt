@@ -211,8 +211,11 @@ fun ValoApp() {
                         RiotLoginScreen(
                             viewModel = loginViewModel,
                             onLoginSuccess = {
-                                backStack.removeLastOrNull()
+                                while (backStack.isNotEmpty()) {
+                                    backStack.removeLastOrNull()
+                                }
                                 backStack.add(ValoNavKey.StoreRotation)
+                                storeViewModel.loadData(silent = false)
                             }
                         )
                     }

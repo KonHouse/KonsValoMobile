@@ -29,6 +29,11 @@ class RiotLoginViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            authRepository.authSuccessEvent.collect { success ->
+                _uiState.value = LoginState.Success(success.gameName, success.tagLine)
+            }
+        }
+        viewModelScope.launch {
             authRepository.sessionState.collect { isLogged ->
                 if (isLogged) {
                     val name = authRepository.getGameName() ?: "Valorant"

@@ -12,8 +12,11 @@ import com.example.valomobile.data.remote.ValorantApiService
 import com.example.valomobile.data.remote.model.*
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -67,6 +70,13 @@ class RiotAuthRepository @Inject constructor(
 
     private val _sessionState = MutableStateFlow(isLoggedIn)
     val sessionState: StateFlow<Boolean> = _sessionState.asStateFlow()
+
+    private val _authSuccessEvent = MutableSharedFlow<RiotAuthResult.Success>(extraBufferCapacity = 1)
+    val authSuccessEvent: SharedFlow<RiotAuthResult.Success> = _authSuccessEvent.asSharedFlow()
+
+    fun invalidateSession() {
+        _sessionState.value = false
+    }
 
     suspend fun login(username: String, password: String): RiotAuthResult = withContext(Dispatchers.IO) {
         try {
@@ -274,14 +284,17 @@ class RiotAuthRepository @Inject constructor(
             .putBoolean(KEY_LOGGED_IN, true)
             .apply()
 
-        _sessionState.value = true
-
-        return RiotAuthResult.Success(
+        val successResult = RiotAuthResult.Success(
             gameName = gameName,
             tagLine = tagLine,
             region = region,
             puuid = puuid
         )
+
+        _sessionState.value = true
+        _authSuccessEvent.tryEmit(successResult)
+
+        return successResult
     }
 
     fun syncWebViewCookies() {

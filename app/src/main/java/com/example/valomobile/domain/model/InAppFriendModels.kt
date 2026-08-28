@@ -1,5 +1,8 @@
 package com.example.valomobile.domain.model
 
+import java.time.ZoneOffset
+import java.time.ZonedDateTime
+
 enum class InviteStatus {
     PENDING,
     ACCEPTED,
@@ -47,4 +50,28 @@ data class InAppFriendItem(
     val storeOffers: List<CloudStoreSkinOffer> = emptyList(),
     val lastUpdated: Long = 0L,
     val isOnlineRecently: Boolean = false
-)
+) {
+    /**
+     * Checks if the friend's daily store was synchronized during the current Valorant store cycle.
+     * Riot resets daily stores globally at 00:00:00 UTC.
+     */
+    val isSyncedToday: Boolean
+        get() {
+            if (storeOffers.isEmpty() || lastUpdated <= 0L) return false
+            val startOfCycleMs = getStartOfCurrentStoreCycleMs()
+            return lastUpdated >= startOfCycleMs
+        }
+
+    companion object {
+        fun getStartOfCurrentStoreCycleMs(): Long {
+            return try {
+                val nowUtc = ZonedDateTime.now(ZoneOffset.UTC)
+                val startOfCycleUtc = nowUtc.toLocalDate().atStartOfDay(ZoneOffset.UTC)
+                startOfCycleUtc.toInstant().toEpochMilli()
+            } catch (e: Exception) {
+                // Fallback to 24 hours ago if date calculation fails
+                System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+            }
+        }
+    }
+}
